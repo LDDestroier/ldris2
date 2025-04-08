@@ -35,7 +35,7 @@ function ControlAPI:CheckControl(controlName, repeatTime, repeatDelay)
 	if self.controlsDown[controlName] then
 		if not self.antiControlRepeat[controlName] then
 			if repeatTime then
-				return 	self.controlsDown[controlName] == 1 or
+				return self.controlsDown[controlName] == 1 or
 						(
 							self.controlsDown[controlName] >= (repeatTime * (1 / gameConfig.tickDelay)) and (
 								repeatDelay and ((self.controlsDown[controlName] * gameConfig.tickDelay) % repeatDelay == 0) or true

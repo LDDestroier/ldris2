@@ -17,7 +17,7 @@
            '---'         `---'                             `---'
 
 LDRIS 2 (Work in Progress)
-Last update: April 4th 2025
+Last update: April 8th 2025
 
 Current features:
 	+ Real SRS rotation and wall-kicking!
@@ -52,18 +52,6 @@ local cospc_debuglog = require "lib.debug"
 local clientConfig = require "lib.clientconfig" -- client config can be changed however you please
 local gameConfig = require "lib.gameconfig" -- ideally, only clients with IDENTICAL game configs should face one another
 gameConfig.kickTables = require "lib.kicktables"
-
--- localize commonly used functions
-local stringrep = string.rep
-
--- recursively copies the contents of a table
-table.copy = function(tbl)
-	local output = {}
-	for k,v in pairs(tbl) do
-		output[k] = (type(v) == "table" and k ~= v) and table.copy(v) or v
-	end
-	return output
-end
 
 -- returns a number that's capped between 'min' and 'max', inclusively
 local function between(number, min, max)
@@ -254,7 +242,7 @@ local TitleScreen = function()
 	
 	local GAMES = {
 		GameInstance:New(1, Control:New(clientConfig, true),  0,  0, clientConfig):Initiate(),
-		GameInstance:New(2, Control:New(clientConfig, false), 24, 0, clientConfig):Initiate()
+		--GameInstance:New(2, Control:New(clientConfig, false), 24, 0, clientConfig):Initiate()
 	}
 	
 	local message, doTick
@@ -281,25 +269,27 @@ local TitleScreen = function()
 		end
 		
 		-- run games
-		for i, GAME in ipairs(GAMES) do
-			message = GAME:Resume(evt, doTick) or {}
-			
-			-- end game
-			if message.finished then
-				cospc_debuglog(i, "Game over!")
-				-- for demo purposes, just restart games that fail if they aren't the player
-				if i ~= 1 then
-					GAME:Initiate()
-				else
-					return
+		if not (evt[1] == "key" and evt[3]) then -- do not resume on key repeat events!
+			for i, GAME in ipairs(GAMES) do
+				message = GAME:Resume(evt, doTick) or {}
+				
+				-- end game
+				if message.finished then
+					cospc_debuglog(i, "Game over!")
+					-- for demo purposes, just restart games that fail if they aren't the player
+					if i ~= 1 then
+						GAME:Initiate()
+					else
+						return
+					end
 				end
-			end
-			
-			-- deal garbage attacks to other game instances
-			if message.attack then
-				for _i, _GAME in ipairs(GAMES) do
-					if _i ~= i then
-						_GAME:ReceiveGarbage(message.attack)
+				
+				-- deal garbage attacks to other game instances
+				if message.attack then
+					for _i, _GAME in ipairs(GAMES) do
+						if _i ~= i then
+							_GAME:ReceiveGarbage(message.attack)
+						end
 					end
 				end
 			end

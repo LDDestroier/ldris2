@@ -6,6 +6,15 @@ local gameConfig = require "lib.gameconfig"
 
 local stringrep = string.rep
 
+-- recursively copies the contents of a table
+table.copy = function(tbl)
+	local output = {}
+	for k,v in pairs(tbl) do
+		output[k] = (type(v) == "table" and k ~= v) and table.copy(v) or v
+	end
+	return output
+end
+
 function Mino:New(minoTable, minoID, board, xPos, yPos, oldeMino)
 	local mino = setmetatable(oldeMino or {}, self)
     self.__index = self

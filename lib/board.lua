@@ -88,7 +88,8 @@ function Board:Render(...)
 
 	if self.alignFromBottom then
 
-		tY = self.y + math.floor((self.height - self.visibleHeight) * (2 / 3)) - 2
+		--tY = self.y + math.floor((self.height - self.visibleHeight) * (2 / 3)) - 2
+		tY = self.y + math.floor((self.height - self.visibleHeight) * 0.666) - 2
 
 		for y = self.height, 1 + (self.height - self.visibleHeight), -3 do
 			colorLine1, colorLine2, colorLine3 = "", "", ""

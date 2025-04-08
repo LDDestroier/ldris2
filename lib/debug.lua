@@ -1,6 +1,11 @@
 local _WRITE_TO_DEBUG_MONITOR = true
 
 local cospc_debuglog = function(header, text)
+	-- ccemux itself doesn't have virtual monitor support
+	if _HOST:find("CCEmuX") then
+		return
+	end
+	
 	if _WRITE_TO_DEBUG_MONITOR then
 		if ccemux then
 			if not peripheral.find("monitor") then

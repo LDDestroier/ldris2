@@ -6,9 +6,9 @@
 local Mino = require "lib.mino"
 local Board = require "lib.board"
 local gameConfig = require "lib.gameconfig"
---gameConfig.minos = require "lib.minodata"
 local cospc_debuglog = require "lib.debug"
 
+local GameInstance = {}
 
 local scr_x, scr_y = term.getSize()
 local speaker = peripheral.find("speaker")
@@ -33,8 +33,6 @@ local switch = function(check)
         end
     end
 end
-
-local GameInstance = {}
 
 --local StartGame = function(player_number, native_control, board_xmod, board_ymod)
 function GameInstance:New(player_number, control, board_xmod, board_ymod, clientConfig)
@@ -73,6 +71,7 @@ function GameInstance:Initiate()
 		gameTickCount = 0,
 		controlTickCount = 0,
 		animFrame = 0,
+		width = gameConfig.board_width + 10,
 		state = "halt",	-- ???
 		controlsDown = {}, 
 		incomingGarbage = 0,	-- amount of garbage that will be added to board after non-line-clearing mino placement
@@ -504,6 +503,8 @@ function GameInstance:Tick()
 end
 
 -- keep this in gameinstance.lua
+-- fast actions are ones that should be possible to do multiple times per game tick, such as rotation or movement
+-- i should make a separate function for instant controls and held controls...
 function GameInstance:ControlTick(onlyFastActions)
 	local dc, dmx, dmy	-- did collide, did move X, did move Y
 	local didSlowAction = false
@@ -512,89 +513,93 @@ function GameInstance:ControlTick(onlyFastActions)
 	local mino = self.state.mino
 	local board = self.state.board
 	
-	if (not self.state.paused) and self.state.mino.active then
-		if not onlyFastActions then
-			if control:CheckControl("move_left", self.clientConfig.move_repeat_delay, self.clientConfig.move_repeat_interval) then
-				if not mino.finished then
-					mino:Move(-1, 0, true, true)
-					didSlowAction = true
-					control.antiControlRepeat["move_left"] = true
-				end
-			end
-			if control:CheckControl("move_right", self.clientConfig.move_repeat_delay, self.clientConfig.move_repeat_interval) then
-				if not mino.finished then
-					mino:Move(1, 0, true, true)
-					didSlowAction = true
-					control.antiControlRepeat["move_right"] = true
-				end
-			end
-			if control:CheckControl("soft_drop", 0) then
-				mino:Move(0, self.state.gravity * self.clientConfig.soft_drop_multiplier, true, false)
-				didSlowAction = true
-				control.antiControlRepeat["soft_drop"] = true
-			end
-			if control:CheckControl("hard_drop", false) then
-				mino:Move(0, board.height, true, false)
-				mino.finished = 1
-				makeSound("drop.ogg")
-				didSlowAction = true
-				control.antiControlRepeat["hard_drop"] = true
-			end
-			if control:CheckControl("sonic_drop", false) then
-				if mino:Move(0, board.height, true, true) then
-					makeSound("drop.ogg")
-				end
-				didSlowAction = true
-				control.antiControlRepeat["sonic_drop"] = true
-			end
-			if control:CheckControl("hold", false) then
-				if not mino.finished then
-					mino.finished = 2
-					control.antiControlRepeat["hold"] = true
-					didSlowAction = true
-				end
-			end
-			if control:CheckControl("quit", false) then
-				self.state.topOut = true
-				control.antiControlRepeat["quit"] = true
-				didSlowAction = true
-			end
-		end
-		if control:CheckControl("rotate_ccw", false) then
-			mino:Rotate(-1, true)
-			if mino.spinID <= gameConfig.spin_mode then
-				if (
-					mino:CheckCollision(1, 0) and
-					mino:CheckCollision(-1, 0) and
-					mino:CheckCollision(0, -1)
-				) then
-					self.state.spinLevel = 3
-				else
-					self.state.spinLevel = 0
-				end
-			end
-			control.antiControlRepeat["rotate_ccw"] = true
-		end
-		if control:CheckControl("rotate_cw", false) then
-			mino:Rotate(1, true)
-			if mino.spinID <= gameConfig.spin_mode then
-				if (
-					mino:CheckCollision(1, 0) and
-					mino:CheckCollision(-1, 0) and
-					mino:CheckCollision(0, -1)
-				) then
-					self.state.spinLevel = 3
-				else
-					self.state.spinLevel = 0
-				end
-			end
-			control.antiControlRepeat["rotate_cw"] = true
-		end
-	end
 	if control:CheckControl("pause", false) then
 		self.state.paused = not self.state.paused
 		control.antiControlRepeat["pause"] = true
 	end
+	
+	if self.state.paused or not mino.active then
+		return false
+	end
+	
+	if not onlyFastActions then
+		if control:CheckControl("move_left", self.clientConfig.move_repeat_delay, self.clientConfig.move_repeat_interval) then
+			if not mino.finished then
+				mino:Move(-1, 0, true, true)
+				didSlowAction = true
+				control.antiControlRepeat["move_left"] = true
+			end
+		end
+		if control:CheckControl("move_right", self.clientConfig.move_repeat_delay, self.clientConfig.move_repeat_interval) then
+			if not mino.finished then
+				mino:Move(1, 0, true, true)
+				didSlowAction = true
+				control.antiControlRepeat["move_right"] = true
+			end
+		end
+		if control:CheckControl("soft_drop", 0) then
+			mino:Move(0, self.state.gravity * self.clientConfig.soft_drop_multiplier, true, false)
+			didSlowAction = true
+			control.antiControlRepeat["soft_drop"] = true
+		end
+		if control:CheckControl("hard_drop", false) then
+			mino:Move(0, board.height, true, false)
+			mino.finished = 1
+			makeSound("drop.ogg")
+			didSlowAction = true
+			control.antiControlRepeat["hard_drop"] = true
+		end
+		if control:CheckControl("sonic_drop", false) then
+			if mino:Move(0, board.height, true, true) then
+				makeSound("drop.ogg")
+			end
+			didSlowAction = true
+			control.antiControlRepeat["sonic_drop"] = true
+		end
+		if control:CheckControl("hold", false) then
+			if not mino.finished then
+				mino.finished = 2
+				control.antiControlRepeat["hold"] = true
+				didSlowAction = true
+			end
+		end
+		if control:CheckControl("quit", false) then
+			self.state.topOut = true
+			control.antiControlRepeat["quit"] = true
+			didSlowAction = true
+		end
+	end
+	if control:CheckControl("rotate_ccw", false) and gameConfig.can_rotate then
+		mino:Rotate(-1, true)
+		if mino.spinID <= gameConfig.spin_mode then
+			if (
+				mino:CheckCollision(1, 0) and
+				mino:CheckCollision(-1, 0) and
+				mino:CheckCollision(0, -1)
+			) then
+				self.state.spinLevel = 3
+			else
+				self.state.spinLevel = 0
+			end
+		end
+		control.antiControlRepeat["rotate_ccw"] = true
+	end
+	if control:CheckControl("rotate_cw", false) and gameConfig.can_rotate then
+		mino:Rotate(1, true)
+		if mino.spinID <= gameConfig.spin_mode then
+			if (
+				mino:CheckCollision(1, 0) and
+				mino:CheckCollision(-1, 0) and
+				mino:CheckCollision(0, -1)
+			) then
+				self.state.spinLevel = 3
+			else
+				self.state.spinLevel = 0
+			end
+		end
+		control.antiControlRepeat["rotate_cw"] = true
+	end
+	
 	return didSlowAction
 end
 
