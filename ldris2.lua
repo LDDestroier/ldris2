@@ -30,10 +30,13 @@ Current features:
 	+ Piece queue! It's even animated!
 
 To-do:
-	+ Turn the GameState into an object like Minos and Boards
+	+ Refactor all code to look prettier
 	+ Add score, and let lineclears and piece dropping add to it
+	+ Fix garbage calculation when considering combos (currently doesn't factor in combos)
+	+ Implement initial hold and initial rotation
+	+ Check for perfect clears and react accordingly (send 10 lines of garbage)
 	+ Add an actual menu, and not that shit LDRIS 1 had
-	+ Multiplayer, as well as an implementation of garbage
+	+ Implement proper Multiplayer (modem-only for now)
 	+ Cheese race mode
 	+ Define color palletes so that the ghost piece isn't the color of dirt
 	+ Add in-game menu for changing controls (some people can actually tolerate guideline)
@@ -45,17 +48,13 @@ local Board = require "lib.board"
 local Mino = require "lib.mino"
 local GameInstance = require "lib.gameinstance"
 local Control = require "lib.control"
-
--- client config can be changed however you please
-local clientConfig = require "lib.clientconfig"
-
--- ideally, only clients with IDENTICAL game configs should face one another
-local gameConfig = require "lib.gameconfig"
+local cospc_debuglog = require "lib.debug"
+local clientConfig = require "lib.clientconfig" -- client config can be changed however you please
+local gameConfig = require "lib.gameconfig" -- ideally, only clients with IDENTICAL game configs should face one another
+gameConfig.kickTables = require "lib.kicktables"
 
 -- localize commonly used functions
 local stringrep = string.rep
-
-local cospc_debuglog = require "lib.debug"
 
 -- recursively copies the contents of a table
 table.copy = function(tbl)
@@ -65,17 +64,6 @@ table.copy = function(tbl)
 	end
 	return output
 end
-
-local roundToPlaces = function(number, places)
-	return math.floor(number * 10^places) / (10^places)
-end
-
--- current state of the game; can be used to perfectly recreate the current scene of a game
--- that includes board and mino objects, bitch
--- gameState = {}
-
--- gameConfig.minos = require "lib.minodata"
-gameConfig.kickTables = require "lib.kicktables"
 
 -- returns a number that's capped between 'min' and 'max', inclusively
 local function between(number, min, max)
