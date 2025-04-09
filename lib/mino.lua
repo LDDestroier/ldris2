@@ -2,14 +2,11 @@
 local Mino = {}
 
 local gameConfig = require "lib.gameconfig"
---gameConfig.minos = require "lib.minodata"
-
-local stringrep = string.rep
 
 -- recursively copies the contents of a table
 table.copy = function(tbl)
 	local output = {}
-	for k,v in pairs(tbl) do
+	for k, v in pairs(tbl) do
 		output[k] = (type(v) == "table" and k ~= v) and table.copy(v) or v
 	end
 	return output
@@ -17,8 +14,8 @@ end
 
 function Mino:New(minoTable, minoID, board, xPos, yPos, oldeMino)
 	local mino = setmetatable(oldeMino or {}, self)
-    self.__index = self
-	
+	self.__index = self
+
 	local minoTable = minoTable or gameConfig.minos
 	if not minoTable[minoID] then
 		error("tried to spawn mino with invalid ID '" .. tostring(minoID) .. "'")
@@ -47,6 +44,7 @@ function Mino:New(minoTable, minoID, board, xPos, yPos, oldeMino)
 	mino.lockTimer = 0
 	mino.movesLeft = gameConfig.lock_move_limit
 	mino.yHighest = mino.y
+	mino.doWriteColor = false
 
 	return mino
 end
@@ -74,32 +72,29 @@ end
 -- if doNotCountBorder == true, the border of the board won't be considered as solid
 -- returns true if it IS colliding, and false if it is not
 function Mino:CheckCollision(xMod, yMod, doNotCountBorder, round)
-	local cx, cy	-- represents position on board
+	local cx, cy -- represents position on board
 	round = round or math.floor
 	for y = 1, self.height do
 		for x = 1, self.width do
-
 			cx = round(-1 + x + self.x + xMod)
 			cy = round(-1 + y + self.y + yMod)
-			
+
 			if self:DoesSpotExist(cx, cy) then
 				if (
-					self.board.contents[cy]:sub(cx, cx)	~= self.board.blankColor and
+					self.board.contents[cy]:sub(cx, cx) ~= self.board.blankColor and
 					self:CheckSolid(x, y)
 				) then
-					return true
-				end
-				
-			elseif (not doNotCountBorder) and self:CheckSolid(x, y) then
 				return true
 			end
-
+		elseif (not doNotCountBorder) and self:CheckSolid(x, y) then
+			return true
 		end
 	end
-	return false
+end
+return false
 end
 
--- checks whether or not the (x, y) position of the mino's shape is solid.
+-- checks whether or not the (x, y) position of the mino's shape is solid
 function Mino:CheckSolid(x, y, relativeToBoard)
 	--print(x, y, relativeToBoard)
 	if relativeToBoard then
@@ -109,7 +104,7 @@ function Mino:CheckSolid(x, y, relativeToBoard)
 	x = math.floor(x)
 	y = math.floor(y)
 	if y >= 1 and y <= self.height and x >= 1 and x <= self.width then
-		return self.shape[y]:sub(x, x) ~= " "
+		return self.shape[y]:sub(x, x) ~= " ", self.doWriteColor and self.color or self.shape[y]:sub(x, x)
 	else
 		return false
 	end
@@ -125,9 +120,9 @@ function Mino:Rotate(direction, expendLockMove)
 	local newRotation = ((self.rotation + direction + 1) % 4) - 1
 	local kickRotTranslate = {
 		[-1] = "3",
-		[ 0] = "0",
-		[ 1] = "1",
-		[ 2] = "2",
+		[0] = "0",
+		[1] = "1",
+		[2] = "2",
 	}
 	if self.active then
 		-- get the specific offset table for the type of rotation based on the mino type
@@ -182,6 +177,7 @@ function Mino:Rotate(direction, expendLockMove)
 	return self, success
 end
 
+-- if doSlam == true, moves as far as it can before terminating
 function Mino:Move(x, y, doSlam, expendLockMove)
 	local didSlam
 	local didCollide = false
@@ -190,9 +186,7 @@ function Mino:Move(x, y, doSlam, expendLockMove)
 	local step, round
 
 	if self.active then
-	
 		if doSlam then
-
 			self.xFloat = self.xFloat + x
 			self.yFloat = self.yFloat + y
 
@@ -243,7 +237,6 @@ function Mino:Move(x, y, doSlam, expendLockMove)
 			else
 				didMoveX = false
 			end
-			
 		else
 			if self:CheckCollision(x, y) then
 				didCollide = true
@@ -287,13 +280,13 @@ end
 
 -- writes the mino to the board
 function Mino:Write()
-	if self.active then
+	local is_solid, mino_color
+	if self.active and self.board then
 		for y = 1, self.height do
 			for x = 1, self.width do
-				if self:CheckSolid(x, y, false) then
-					if self.board then
-						self.board:Write(x + self.x - 1, y + self.y - 1, self.color)
-					end
+				is_solid, mino_color = self:CheckSolid(x, y, false)
+				if is_solid then
+					self.board:Write(x + self.x - 1, y + self.y - 1, self.doWriteColor and self.color or mino_color)
 				end
 			end
 		end

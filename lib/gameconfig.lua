@@ -18,6 +18,8 @@ return {
 	lock_move_limit = 30,		-- amount of moves a mino can do after descending below its lowest point yet traversed
 								-- used as a method of preventing stalling -- set it to math.huge for infinite
 	tickDelay = 0.05,			-- time between game ticks
-	enable_sound = true,
+	garbage_cap = 4,			-- highest amount of garbage that will push to the board at once
+	enable_sound = true,		-- enables use of speaker peripheral for game sounds
+	enable_noteblocksound = false,	-- if true, opts for noteblock sounds intead of the included .ogg files
 	minos = require "lib.minodata"
 }

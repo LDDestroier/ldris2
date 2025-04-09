@@ -1,8 +1,6 @@
 -- game instance object
 -- returns a function that resumes the game state for 1 tick and returns event info
 
--- current status: total fuck
-
 local Mino = require "lib.mino"
 local Board = require "lib.board"
 local gameConfig = require "lib.gameconfig"
@@ -11,30 +9,7 @@ local cospc_debuglog = require "lib.debug"
 local GameInstance = {}
 
 local scr_x, scr_y = term.getSize()
-local speaker = peripheral.find("speaker")
-if (not speaker) and periphemu then
-	periphemu.create("speaker", "speaker")
-	speaker = peripheral.wrap("speaker")
-end
 
-local function makeSound(name)
-	if speaker and gameConfig.enable_sound then
-		speaker.playLocalMusic(fs.combine(shell.dir(), "sound/" .. name))
-	end
-end
-
--- emulation of switch case in Lua
-local switch = function(check)
-    return function(cases)
-        if type(cases[check]) == "function" then
-            return cases[check]()
-        elseif type(cases["default"] == "function") then
-            return cases["default"]()
-        end
-    end
-end
-
---local StartGame = function(player_number, native_control, board_xmod, board_ymod)
 function GameInstance:New(player_number, control, board_xmod, board_ymod, clientConfig)
 	local game = setmetatable({}, self)
 	self.__index = self
@@ -50,10 +25,7 @@ function GameInstance:New(player_number, control, board_xmod, board_ymod, client
 	return game
 end
 
--- TODO: unfuck this please
-
 function GameInstance:Initiate()
-
 	self.state = {
 		gravity = gameConfig.startingGravity,
 		targetPlayer = 0,
@@ -71,18 +43,15 @@ function GameInstance:Initiate()
 		gameTickCount = 0,
 		controlTickCount = 0,
 		animFrame = 0,
-		width = gameConfig.board_width + 10,
-		state = "halt",	-- ???
-		controlsDown = {}, 
-		incomingGarbage = 0,	-- amount of garbage that will be added to board after non-line-clearing mino placement
-		combo = 0,				-- amount of successive line clears
-		backToBack = 0,			-- amount of tetris/t-spins comboed
-		spinLevel = 0			-- 0 = no special spin
-	}							-- 1 = mini spin
-								-- 2 = Z/S/J/L spin
-								-- 3 = T spin
-	
-	
+		controlsDown = {},
+		incomingGarbage = 0, -- amount of garbage that will be added to board after non-line-clearing mino placement
+		combo = 0,           -- amount of successive line clears
+		backToBack = 0,      -- amount of tetris/t-spins comboed
+		spinLevel = 0        -- 0 = no special spin
+	}                        -- 1 = mini spin
+	-- 2 = Z/S/J/L spin
+	-- 3 = T spin
+
 	-- create boards
 	-- main gameplay board
 	self.state.board = Board:New(
@@ -108,8 +77,8 @@ function GameInstance:Initiate()
 		4
 	)
 	self.state.holdBoard.visibleHeight = 4
-	
-	
+
+
 	-- indicator of incoming garbage
 	self.state.garbageBoard = Board:New(
 		self.state.board.x - 1,
@@ -120,6 +89,8 @@ function GameInstance:Initiate()
 	)
 	self.state.garbageBoard.visibleHeight = self.state.garbageBoard.height
 
+	self.width = gameConfig.board_width + 10
+	self.height = math.ceil(self.state.board.visibleHeight * 0.666)
 
 	-- populate the queue
 	for i = 1, self.clientConfig.queue_length + 1 do
@@ -127,7 +98,8 @@ function GameInstance:Initiate()
 	end
 
 	for i = 1, self.clientConfig.queue_length do
-		self.state.queueMinos[i] = Mino:New(nil,
+		self.state.queueMinos[i] = Mino:New(
+			nil,
 			self.state.queue[i + 1],
 			self.state.queueBoard,
 			1,
@@ -138,11 +110,23 @@ function GameInstance:Initiate()
 	self.queue_anim = 0
 
 	self.state.mino = self:MakeDefaultMino()
-	self.state.ghostMino = Mino:New(nil, self.state.mino.minoID, self.state.board, self.state.mino.x, self.state.mino.y, {})
+	self.state.ghostMino = Mino:New(nil, self.state.mino.minoID, self.state.board, self.state.mino.x, self.state.mino.y,
+	{})
+	self.state.ghostMino.doWriteColor = true
 
 	local garbageMinoShape = {}
-	for i = 1, self.state.garbageBoard.height do
-		garbageMinoShape[i] = "@"
+	for i = 1, self.state.board.height * 4 do
+		if i > 32 then
+			garbageMinoShape[i] = "6" -- you're super fucked
+		elseif i > 24 then
+			garbageMinoShape[i] = "b" -- you're fucked
+		elseif i > 16 then
+			garbageMinoShape[i] = "1"
+		elseif i > 8 then
+			garbageMinoShape[i] = "4"
+		else
+			garbageMinoShape[i] = "e"
+		end
 	end
 
 	self.state.garbageMino = Mino:New({
@@ -151,10 +135,36 @@ function GameInstance:Initiate()
 			color = "e"
 		}
 	}, 1, self.state.garbageBoard, 1, self.state.garbageBoard.height + 1)
-	
+
 	self.control.keysDown = {}
 
 	return self
+end
+
+function GameInstance:Move(x, y)
+	local board = self.state.board
+	local queueBoard = self.state.queueBoard
+	local holdBoard = self.state.holdBoard
+	local garbageBoard = self.state.garbageBoard
+
+	self.board_xmod = math.floor(x or self.board_xmod)
+	self.board_ymod = math.floor(y or self.board_ymod)
+
+	board.x = 7 + self.board_xmod
+	board.y = 1 + self.board_ymod
+
+	queueBoard.x = board.x + board.width + 1
+	queueBoard.y = board.y
+
+	holdBoard.x = 2 + self.board_xmod
+	holdBoard.y = 1 + self.board_ymod
+
+	garbageBoard.x = board.x - 1
+	garbageBoard.y = board.y
+end
+
+function GameInstance:MakeSound(name)
+	self.message.sound = name
 end
 
 function GameInstance:CyclePiece()
@@ -165,12 +175,28 @@ function GameInstance:CyclePiece()
 end
 
 function GameInstance:PseudoRandom()
-	return switch(gameConfig.randomBag) {
-		["random"] = function()
-			return math.random(1, #gameConfig.minos)
-		end,
-		["singlebag"] = function()
-			if #self.state.random_bag == 0 then
+	if gameConfig.randomBag == "random" then
+		return math.random(1, #gameConfig.minos)
+
+	elseif gameConfig.randomBag == "singlebag" then
+		if #self.state.random_bag == 0 then
+			-- repopulate random bag
+			for i = 1, #gameConfig.minos do
+				if math.random(0, 1) == 0 then
+					self.state.random_bag[#self.state.random_bag + 1] = i
+				else
+					table.insert(self.state.random_bag, 1, i)
+				end
+			end
+		end
+		local pick = math.random(1, #self.state.random_bag)
+		local output = self.state.random_bag[pick]
+		table.remove(self.state.random_bag, pick)
+		return output
+
+	elseif gameConfig.randomBag == "doublebag" then
+		if #self.state.random_bag == 0 then
+			for r = 1, 2 do
 				-- repopulate random bag
 				for i = 1, #gameConfig.minos do
 					if math.random(0, 1) == 0 then
@@ -180,30 +206,12 @@ function GameInstance:PseudoRandom()
 					end
 				end
 			end
-			local pick = math.random(1, #self.state.random_bag)
-			local output = self.state.random_bag[pick]
-			table.remove(self.state.random_bag, pick)
-			return output
-		end,
-		["doublebag"] = function()
-			if #self.state.random_bag == 0 then
-				for r = 1, 2 do
-					-- repopulate random bag
-					for i = 1, #gameConfig.minos do
-						if math.random(0, 1) == 0 then
-							self.state.random_bag[#self.state.random_bag + 1] = i
-						else
-							table.insert(self.state.random_bag, 1, i)
-						end
-					end
-				end
-			end
-			local pick = math.random(1, #self.state.random_bag)
-			local output = self.state.random_bag[pick]
-			table.remove(self.state.random_bag, pick)
-			return output
 		end
-	}
+		local pick = math.random(1, #self.state.random_bag)
+		local output = self.state.random_bag[pick]
+		table.remove(self.state.random_bag, pick)
+		return output
+	end
 end
 
 function GameInstance:MakeDefaultMino()
@@ -217,18 +225,14 @@ function GameInstance:MakeDefaultMino()
 	else
 		nextPiece = self:CyclePiece()
 	end
-	
+
 	return Mino:New(nil,
-		nextPiece,
-		self.state.board,
-		math.floor(
-			self.state.board.width / 2 - 1
-		) + (
-			gameConfig.minos[nextPiece].spawnOffsetX or 0
-		),
-		math.floor(gameConfig.board_height_visible + 1) + (gameConfig.minos[nextPiece].spawnOffsetY or 0),
-		self.state.mino
-	)
+	nextPiece,
+	self.state.board,
+	math.floor(self.state.board.width / 2 - 1) + (gameConfig.minos[nextPiece].spawnOffsetX or 0),
+	math.floor(gameConfig.board_height_visible + 1) + (gameConfig.minos[nextPiece].spawnOffsetY or 0),
+	self.state.mino
+)
 end
 
 function GameInstance:CalculateGarbage(linesCleared)
@@ -252,7 +256,12 @@ function GameInstance:CalculateGarbage(linesCleared)
 	end
 
 	-- add combo bonus
-	output = output + math.max(0, math.floor(-1 + self.state.combo / 2))
+	output = output + math.max(0, math.floor((self.state.combo - 1) / 2))
+
+	-- add perfect clear bonus
+	if self.didJustClearLine and self.state.board:CheckPerfectClear() then
+		output = output + 10
+	end
 
 	return output
 end
@@ -261,7 +270,7 @@ function GameInstance:HandleLineClears()
 	local mino, board = self.state.mino, self.state.board
 
 	-- get list of full lines
-	local clearedLines = {lookup = {}}
+	local clearedLines = { lookup = {} }
 	for y = 1, board.height do
 		if not board.contents[y]:find(board.blankColor) then
 			clearedLines[#clearedLines + 1] = y
@@ -288,7 +297,6 @@ function GameInstance:HandleLineClears()
 	self.state.linesCleared = self.state.linesCleared + #clearedLines
 
 	return clearedLines
-
 end
 
 function GameInstance:SendGarbage(amount)
@@ -314,7 +322,8 @@ end
 
 function GameInstance:AnimateQueue()
 	table.remove(self.state.queueMinos, 1)
-	self.state.queueMinos[#self.state.queueMinos + 1] = Mino:New(nil,
+	self.state.queueMinos[#self.state.queueMinos + 1] = Mino:New(
+		nil,
 		self.state.queue[self.clientConfig.queue_length],
 		self.state.queueBoard,
 		1,
@@ -326,7 +335,7 @@ end
 function GameInstance:Tick()
 	local mino, ghostMino, garbageMino = self.state.mino, self.state.ghostMino, self.state.garbageMino
 	--	local holdBoard, queueBoard, garbageBoard = self.state.holdBoard, self.state.queueBoard, self.state.garbageBoard
-	
+
 	self.didJustClearLine = false
 
 	local didCollide, didMoveX, didMoveY, yHighestDidChange = mino:Move(0, self.state.gravity, true)
@@ -335,6 +344,7 @@ function GameInstance:Tick()
 	local doMakeNewMino = false
 
 	self.queue_anim = math.max(0, self.queue_anim - 0.8)
+	self.state.gravity = gameConfig.startingGravity + (math.floor(self.state.linesCleared / 10) * 0.1)
 
 	-- position queue minos properly
 	for i = 1, #self.state.queueMinos do
@@ -361,7 +371,7 @@ function GameInstance:Tick()
 	mino.spawnTimer = math.max(0, mino.spawnTimer - gameConfig.tickDelay)
 	if mino.spawnTimer == 0 then
 		if (not mino.active) then
-			makeSound(gameConfig.minos[mino.minoID].sound)
+			self:MakeSound(gameConfig.minos[mino.minoID].sound)
 			self:AnimateQueue()
 		end
 		mino.active = true
@@ -375,7 +385,7 @@ function GameInstance:Tick()
 			self.state.didHold = false
 			self.state.canHold = true
 			-- check for top-out due to placing a piece outside the visible area of its board
-			if false then	-- I'm doing that later
+			if false then -- I'm doing that later
 				
 			else
 				doAnimateQueue = true
@@ -383,21 +393,22 @@ function GameInstance:Tick()
 				doMakeNewMino = true
 				doCheckStuff = true
 			end
-			
+
 		elseif mino.finished == 2 then -- piece will attempt hold
 			if self.state.canHold then
 				self.state.didHold = true
 				self.state.canHold = false
-				
+
 				if self.state.heldPiece then
 					doAnimateQueue = false
 				else
 					doAnimateQueue = true
 				end
-				
+
 				-- draw held piece
 				self.state.holdBoard:Clear()
-				Mino:New(nil,
+				Mino:New(
+					nil,
 					mino.minoID,
 					self.state.holdBoard,
 					1 + (gameConfig.minos[mino.minoID].spawnOffsetX or 0),
@@ -407,39 +418,40 @@ function GameInstance:Tick()
 
 				doMakeNewMino = true
 				doCheckStuff = true
-				
 			else
 				mino.finished = false
 			end
-			
 		else
-			error("I don't know how, but that polyomino's finished!")
+			error("somehow mino.finished is " .. tostring(mino.finished))
 		end
-		
+
 		local linesCleared = self:HandleLineClears()
 		local _delay = (#linesCleared > 0 and self.clientConfig.line_clear_delay or self.clientConfig.appearance_delay)
 
 		if doMakeNewMino then
 			self.state.mino = self:MakeDefaultMino(); mino = self.state.mino
 			self.state.ghostMino = Mino:New(nil, mino.minoID, self.state.board, mino.x, mino.y, {}); ghostMino = self.state.ghostMino
-			
+			self.state.ghostMino.doWriteColor = true
+
 			if (not self.state.didHold) and (_delay > 0) then
 				mino.spawnTimer = _delay
 				mino.active = false
 				mino.visible = false
 				ghostMino.active = false
 				ghostMino.visible = false
-				
+
 			else
-				makeSound(gameConfig.minos[mino.minoID].sound)
+				self:MakeSound(gameConfig.minos[mino.minoID].sound)
 				if doAnimateQueue then
 					self:AnimateQueue()
 				end
 			end
 		end
-		
+
 		-- if the hold attempt fails (say, you already held a piece), it wouldn't do to check for a top-out or line clears
 		if doCheckStuff then
+			-- TODO: this is where I'd put initial rotation
+
 			-- check for top-out due to obstructed mino upon entry
 			-- attempt to move mino at most 2 spaces upwards before considering it fully topped out
 			self.state.topOut = true
@@ -452,76 +464,81 @@ function GameInstance:Tick()
 				end
 			end
 
-			if #linesCleared == 0 then
-				self.state.combo = 0
-				self.state.backToBack = 0
-			else
-				makeSound("lineclear.ogg")
-				self.didJustClearLine = true
-				self.state.combo = self.state.combo + 1
-				if #linesCleared == 4 or self.state.spinLevel >= 1 then
-					self.state.backToBack = self.state.backToBack + 1
-				else
+			if not self.state.didHold then
+				if #linesCleared == 0 then
+					self.state.combo = 0
 					self.state.backToBack = 0
+				else
+					self:MakeSound("lineclear")
+					self.didJustClearLine = true
+					self.state.combo = self.state.combo + 1
+					if #linesCleared >= 4 or self.state.spinLevel >= 1 then
+						self.state.backToBack = self.state.backToBack + 1
+					else
+						self.state.backToBack = 0
+					end
 				end
+
+				-- calculate garbage to be sent
+				local garbage = self:CalculateGarbage(#linesCleared)
+				garbage, self.state.incomingGarbage = math.max(0, garbage - self.state.incomingGarbage),
+				math.max(0, self.state.incomingGarbage - garbage)
+
+				if garbage > 0 then
+					cospc_debuglog(self.player_number, "Doled out " .. garbage .. " lines")
+				end
+
+				-- send garbage to enemy player
+				self:SendGarbage(garbage)
+
+				-- generate garbage lines
+				local taken_garbage = math.min(self.state.incomingGarbage, gameConfig.garbage_cap)
+				self.state.board:AddGarbage(taken_garbage)
+				self.state.incomingGarbage = self.state.incomingGarbage - taken_garbage
 			end
-			-- calculate garbage to be sent
-			local garbage = self:CalculateGarbage(#linesCleared)
-			garbage, self.state.incomingGarbage = math.max(0, garbage - self.state.incomingGarbage), math.max(0, self.state.incomingGarbage - garbage)
-			
-			if garbage > 0 then
-				cospc_debuglog(self.player_number, "Doled out " .. garbage .. " lines")
-			end
-			
-			-- send garbage to enemy player
-			self:SendGarbage(garbage)
-			
-			-- generate garbage lines
-			self.state.board:AddGarbage(self.state.incomingGarbage)
-			self.state.incomingGarbage = 0
 
 			if doMakeNewMino then
 				self.state.spinLevel = 0
 			end
-
 		end
 	end
 
-
-	-- debug info
+	-- debug
 	if self.control.native_control then
 		term.setCursorPos(2, scr_y - 2)
-		term.write("Lines: " .. self.state.linesCleared .. "      ")
+		term.write("Combo: " .. self.state.combo .. "      ")
 
 		term.setCursorPos(2, scr_y - 1)
 		term.write("M=" .. mino.movesLeft .. ", TTL=" .. tostring(mino.lockTimer):sub(1, 4) .. "      ")
 
 		term.setCursorPos(2, scr_y - 0)
-		term.write("POS=(" .. mino.x .. ":" .. tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
+		term.write("POS=(" ..
+		mino.x ..
+		":" ..
+		tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
 	end
-	
 end
 
 -- keep this in gameinstance.lua
 -- fast actions are ones that should be possible to do multiple times per game tick, such as rotation or movement
 -- i should make a separate function for instant controls and held controls...
 function GameInstance:ControlTick(onlyFastActions)
-	local dc, dmx, dmy	-- did collide, did move X, did move Y
+	local dc, dmx, dmy -- did collide, did move X, did move Y
 	local didSlowAction = false
-	
+
 	local control = self.control
 	local mino = self.state.mino
 	local board = self.state.board
-	
+
 	if control:CheckControl("pause", false) then
 		self.state.paused = not self.state.paused
 		control.antiControlRepeat["pause"] = true
 	end
-	
+
 	if self.state.paused or not mino.active then
 		return false
 	end
-	
+
 	if not onlyFastActions then
 		if control:CheckControl("move_left", self.clientConfig.move_repeat_delay, self.clientConfig.move_repeat_interval) then
 			if not mino.finished then
@@ -545,13 +562,13 @@ function GameInstance:ControlTick(onlyFastActions)
 		if control:CheckControl("hard_drop", false) then
 			mino:Move(0, board.height, true, false)
 			mino.finished = 1
-			makeSound("drop.ogg")
+			self:MakeSound("drop")
 			didSlowAction = true
 			control.antiControlRepeat["hard_drop"] = true
 		end
 		if control:CheckControl("sonic_drop", false) then
 			if mino:Move(0, board.height, true, true) then
-				makeSound("drop.ogg")
+				self:MakeSound("drop")
 			end
 			didSlowAction = true
 			control.antiControlRepeat["sonic_drop"] = true
@@ -599,16 +616,11 @@ function GameInstance:ControlTick(onlyFastActions)
 		end
 		control.antiControlRepeat["rotate_cw"] = true
 	end
-	
+
 	return didSlowAction
 end
 
-local evt
-
--- TODO: make each instance of the game into an object
-
 function GameInstance:Resume(evt, doTick)
-
 	local mino, ghostMino, garbageMino = self.state.mino, self.state.ghostMino, self.state.garbageMino
 	self.message = {} -- sends back to main
 
@@ -621,24 +633,21 @@ function GameInstance:Resume(evt, doTick)
 
 	self.state.garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
 
-	-- render board
 	self:Render(true)
-
-	--evt = {os.pullEvent()}
 
 	if evt[1] == "key" and not evt[3] then
 		self.control.keysDown[evt[2]] = 1
 		self.didControlTick = self:ControlTick(false)
 		self.state.controlTickCount = self.state.controlTickCount + 1
-		
+
 	elseif evt[1] == "key_up" then
 		self.control.keysDown[evt[2]] = nil
 	end
 
 	if evt[1] == "timer" then
 		if doTick then
---			tickTimer = os.startTimer(0.05)
-			for k,v in pairs(self.control.keysDown) do
+			--			tickTimer = os.startTimer(0.05)
+			for k, v in pairs(self.control.keysDown) do
 				self.control.keysDown[k] = 1 + v
 			end
 			self:ControlTick(self.didControlTick)
@@ -656,7 +665,7 @@ function GameInstance:Resume(evt, doTick)
 		-- this will have a more elaborate game over sequence later
 		self.message.finished = true
 	end
-	
+
 	return self.message
 end
 

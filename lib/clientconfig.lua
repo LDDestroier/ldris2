@@ -27,7 +27,7 @@ return {
 	appearance_delay = 0,
 	
 	-- alternate appearance delay for when a line is cleared
-	line_clear_delay = 0.3,
+	line_clear_delay = 0,
 	
 	-- amount of pieces visible in the queue (limited by size of UI)
 	queue_length = 5,
