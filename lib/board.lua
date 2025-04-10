@@ -10,6 +10,7 @@ function Board:New(x, y, width, height, blankColor)
     self.__index = self
 
     board.contents = {}
+	board.dirty = {}
     board.height = height or gameConfig.board_height
     board.width = width or gameConfig.board_width
     board.x, board.y = x, y
@@ -17,10 +18,10 @@ function Board:New(x, y, width, height, blankColor)
     board.transparentColor = "f"         -- color if the board tries to render where there is no board
     board.garbageColor = "8"
     board.visibleHeight = height and math.floor(board.height / 2) or gameConfig.board_height_visible
-    board.alignFromBottom = false
 
     for y = 1, board.height do
         board.contents[y] = stringrep(board.blankColor, board.width)
+		board.dirty[y] = true
     end
 
     return board
@@ -33,6 +34,19 @@ function Board:Write(x, y, color)
         error("tried to write outsite size of board!")
     end
     self.contents[y] = self.contents[y]:sub(1, x - 1) .. color .. self.contents[y]:sub(x + 1)
+	self.dirty[y] = true
+end
+
+function Board:Dirty(y1, y2)
+	for y = y1 or 1, y2 or self.height do
+		self.dirty[y] = true
+	end
+end
+
+function Board:Undirty(y1, y2)
+	for y = y1 or 1, y2 or self.height do
+		self.dirty[y] = false
+	end
 end
 
 function Board:AddGarbage(amount)
@@ -48,12 +62,13 @@ function Board:AddGarbage(amount)
 
     -- populate 'amount' bottom rows with fucking bullshit
     for y = self.height, self.height - amount + 1, -1 do
-        self.contents[y] = stringrep(self.garbageColor, holeX - 1) ..
-            self.blankColor .. stringrep(self.garbageColor, self.width - holeX)
+        self.contents[y] = stringrep(self.garbageColor, holeX - 1) .. self.blankColor .. stringrep(self.garbageColor, self.width - holeX)
         if math.random(1, 100) <= changePercent then
             holeX = math.random(1, self.width)
         end
     end
+	
+	--self:Dirty()
 end
 
 function Board:CheckPerfectClear()
@@ -73,6 +88,7 @@ function Board:Clear(color)
     for y = 1, self.height do
         self.contents[y] = stringrep(color, self.width)
     end
+	--self:Dirty()
 end
 
 -- used for sending board data over the network
@@ -99,112 +115,58 @@ function Board:Render(...)
     local mino, tY
     local is_solid, mino_color
 
-    if self.alignFromBottom then
-        --tY = self.y + math.floor((self.height - self.visibleHeight) * (2 / 3)) - 2
-        tY = self.y + math.floor((self.height - self.visibleHeight) * 0.666) - 2
+	tY = self.y
 
-        for y = self.height, 1 + (self.height - self.visibleHeight), -3 do
-            colorLine1, colorLine2, colorLine3 = "", "", ""
-            for x = 1, self.width do
-                minoColor1, minoColor2, minoColor3 = nil, nil, nil
-                for i = 1, #minos do
-                    mino = minos[i]
-                    if mino.visible then
-                        is_solid, mino_color = mino:CheckSolid(x, y - 0, true)
-                        if is_solid then
-                            minoColor1 = mino_color
-                        end
+	for y = 1 + (self.height - self.visibleHeight), self.height, 3 do
+		colorLine1, colorLine2, colorLine3 = "", "", ""
+		for x = 1, self.width do
+			minoColor1, minoColor2, minoColor3 = nil, nil, nil
+			for i = 1, #minos do
+				mino = minos[i]
+				if mino.visible then
+					is_solid, mino_color = mino:CheckSolid(x, y + 0, true)
+					if is_solid then
+						minoColor1 = mino_color
+					end
 
-                        is_solid, mino_color = mino:CheckSolid(x, y - 1, true)
-                        if is_solid then
-                            minoColor2 = mino_color
-                        end
+					is_solid, mino_color = mino:CheckSolid(x, y + 1, true)
+					if is_solid then
+						minoColor2 = mino_color
+					end
 
-                        is_solid, mino_color = mino:CheckSolid(x, y - 2, true)
-                        if is_solid then
-                            minoColor3 = mino_color
-                        end
-                    end
-                end
+					is_solid, mino_color = mino:CheckSolid(x, y + 2, true)
+					if is_solid then
+						minoColor3 = mino_color
+					end
+				end
+			end
 
-                colorLine1 = colorLine1 ..
-                    (minoColor1 or ((self.contents[y - 0] and self.contents[y - 0]:sub(x, x)) or self.blankColor))
-                colorLine2 = colorLine2 ..
-                    (minoColor2 or ((self.contents[y - 1] and self.contents[y - 1]:sub(x, x)) or self.blankColor))
-                colorLine3 = colorLine3 ..
-                    (minoColor3 or ((self.contents[y - 2] and self.contents[y - 2]:sub(x, x)) or self.blankColor))
-            end
+			colorLine1 = colorLine1 ..
+				(minoColor1 or ((self.contents[y + 0] and self.contents[y + 0]:sub(x, x)) or self.blankColor))
+			colorLine2 = colorLine2 ..
+				(minoColor2 or ((self.contents[y + 1] and self.contents[y + 1]:sub(x, x)) or self.blankColor))
+			colorLine3 = colorLine3 ..
+				(minoColor3 or ((self.contents[y + 2] and self.contents[y + 2]:sub(x, x)) or self.blankColor))
+		end
 
-            if (y - 0) <= (self.height - self.visibleHeight) then
-                colorLine1 = transparentLine
-            end
-            if (y - 1) <= (self.height - self.visibleHeight) then
-                colorLine2 = transparentLine
-            end
-            if (y - 2) <= (self.height - self.visibleHeight) then
-                colorLine3 = transparentLine
-            end
+		if (y + 0) > self.height or (y + 0) <= (self.height - self.visibleHeight) then
+			colorLine1 = transparentLine
+		end
+		if (y + 1) > self.height or (y + 1) <= (self.height - self.visibleHeight) then
+			colorLine2 = transparentLine
+		end
+		if (y + 2) > self.height or (y + 2) <= (self.height - self.visibleHeight) then
+			colorLine3 = transparentLine
+		end
 
-            term.setCursorPos(self.x, self.y + tY)
-            term.blit(charLine1, colorLine2, colorLine1)
-            tY = tY - 1
-            term.setCursorPos(self.x, self.y + tY)
-            term.blit(charLine2, colorLine3, colorLine2)
-            tY = tY - 1
-        end
-    else
-        tY = self.y
-
-        for y = 1 + (self.height - self.visibleHeight), self.height, 3 do
-            colorLine1, colorLine2, colorLine3 = "", "", ""
-            for x = 1, self.width do
-                minoColor1, minoColor2, minoColor3 = nil, nil, nil
-                for i = 1, #minos do
-                    mino = minos[i]
-                    if mino.visible then
-                        is_solid, mino_color = mino:CheckSolid(x, y + 0, true)
-                        if is_solid then
-                            minoColor1 = mino_color
-                        end
-
-                        is_solid, mino_color = mino:CheckSolid(x, y + 1, true)
-                        if is_solid then
-                            minoColor2 = mino_color
-                        end
-
-                        is_solid, mino_color = mino:CheckSolid(x, y + 2, true)
-                        if is_solid then
-                            minoColor3 = mino_color
-                        end
-                    end
-                end
-
-                colorLine1 = colorLine1 ..
-                    (minoColor1 or ((self.contents[y + 0] and self.contents[y + 0]:sub(x, x)) or self.blankColor))
-                colorLine2 = colorLine2 ..
-                    (minoColor2 or ((self.contents[y + 1] and self.contents[y + 1]:sub(x, x)) or self.blankColor))
-                colorLine3 = colorLine3 ..
-                    (minoColor3 or ((self.contents[y + 2] and self.contents[y + 2]:sub(x, x)) or self.blankColor))
-            end
-
-            if (y + 0) > self.height or (y + 0) <= (self.height - self.visibleHeight) then
-                colorLine1 = transparentLine
-            end
-            if (y + 1) > self.height or (y + 1) <= (self.height - self.visibleHeight) then
-                colorLine2 = transparentLine
-            end
-            if (y + 2) > self.height or (y + 2) <= (self.height - self.visibleHeight) then
-                colorLine3 = transparentLine
-            end
-
-            term.setCursorPos(self.x, self.y + tY)
-            term.blit(charLine2, colorLine1, colorLine2)
-            tY = tY + 1
-            term.setCursorPos(self.x, self.y + tY)
-            term.blit(charLine1, colorLine2, colorLine3)
-            tY = tY + 1
-        end
+		term.setCursorPos(self.x, self.y + tY)
+		term.blit(charLine2, colorLine1, colorLine2)
+		term.setCursorPos(self.x, self.y + tY + 1)
+		term.blit(charLine1, colorLine2, colorLine3)
+		tY = tY + 2
     end
+	
+	--self:Undirty()
 end
 
 return Board

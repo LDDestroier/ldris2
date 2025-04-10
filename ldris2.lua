@@ -51,6 +51,8 @@ local clientConfig = require "lib.clientconfig" -- client config can be changed 
 local gameConfig = require "lib.gameconfig"     -- ideally, only clients with IDENTICAL game configs should face one another
 gameConfig.kickTables = require "lib.kicktables"
 
+local resume_count = 0
+
 local speaker = peripheral.find("speaker")
 if (not speaker) and periphemu then
 		periphemu.create("speaker", "speaker")
@@ -86,35 +88,72 @@ local function queueSound(name)
 								sound_timers[os.startTimer((i - 2) * sound_data[name][1])] = sound_data[name][i]
 						end
 				end
-		else
+		elseif speaker then
 				speaker.playLocalMusic(fs.combine(shell.dir(), "sound/" .. name .. ".ogg"))
 		end
+end
+
+local function write_debug_stuff(game)
+	if game.control.native_control then
+		local mino = game.state.mino
+		term.setCursorPos(2, scr_y - 2)
+		term.write("Lines: " .. game.state.linesCleared .. "   ")
+		
+		term.setCursorPos(14, scr_y - 2)
+		term.write("Combo: " .. game.state.combo .. "      ")
+
+		term.setCursorPos(2, scr_y - 1)
+		term.write("M=" .. mino.movesLeft .. ", TtL=" .. tostring(mino.lockTimer):sub(1, 4) .. "      ")
+
+		term.setCursorPos(2, scr_y - 0)
+		term.write("POS=(" ..
+		mino.x ..
+		":" ..
+		tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
+	end
 end
 
 local function main()
 
 		cospc_debuglog(2, "Starting game.")
-		
+
+		local player_number = 1
 		local tickTimer = os.startTimer(gameConfig.tickDelay)
 		local message, doTick, doResume
+		
+		local frame_time
+		local last_epoch = os.epoch()
 
 		local GAMES = {
-				GameInstance:New(1, Control:New(clientConfig, true), 0, 0, clientConfig):Initiate(),
-				GameInstance:New(2, Control:New(clientConfig, false), 24, 0, clientConfig):Initiate()
+				GameInstance:New(Control:New(clientConfig, false),  0, 0, clientConfig):Initiate(),
+				GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate()
 		}
+	
 
 		-- center boards on screen
 		local game_size = { GAMES[1].width + 2, GAMES[1].height }
 		for i = 1, #GAMES do
 				GAMES[i]:Move(
-						(scr_x / 2) - (#GAMES * game_size[1]) + (game_size[1] * i),
+						(scr_x / 2) - ((#GAMES * game_size[1]) / 2) + (game_size[1] * (i - 1)),
 						(scr_y / 4) - ((game_size[2] - 5) / 2)
 				)
+		end
+		
+		for i, _GAME in ipairs(GAMES) do
+			_GAME.control:Clear()
+			_GAME.control.native_control = (i == player_number)
 		end
 		
 		while true do
 				doResume = true
 				evt = { os.pullEvent() }
+				
+				term.setCursorPos(1, 1)
+				term.write("t=" .. tostring(resume_count) .. "  ")
+				
+				write_debug_stuff(GAMES[player_number])
+				
+				last_epoch = os.epoch("utc")
 
 				if evt[1] == "timer" and evt[2] == tickTimer then
 						doTick = true
@@ -124,11 +163,11 @@ local function main()
 				end
 
 				if evt[1] == "key" and evt[2] == keys.tab then
-						-- swap playable game
-						GAMES[1].control:Clear()
-						GAMES[2].control:Clear()
-						GAMES[1].control.native_control = not GAMES[1].control.native_control
-						GAMES[2].control.native_control = not GAMES[2].control.native_control
+						player_number = (player_number % #GAMES) + 1
+						for i, _GAME in ipairs(GAMES) do
+							_GAME.control:Clear()
+							_GAME.control.native_control = (i == player_number)
+						end
 				end
 
 				if (evt[1] == "timer" and sound_timers[evt[2]]) then
@@ -141,9 +180,10 @@ local function main()
 				if (evt[1] == "key" and evt[3]) then
 						doResume = false
 				end
-
+				
 				-- run games
 				if doResume then -- do not resume on key repeat events!
+						resume_count = resume_count + 1
 						for i, GAME in ipairs(GAMES) do
 								message = GAME:Resume(evt, doTick) or {}
 
@@ -151,7 +191,7 @@ local function main()
 								if message.finished then
 										cospc_debuglog(i, "Game over!")
 										-- for demo purposes, just restart games that fail if they aren't the player
-										if i ~= 1 then
+										if i ~= player_number then
 												GAME:Initiate()
 										else
 												return
@@ -172,6 +212,11 @@ local function main()
 										end
 								end
 						end
+						
+						frame_time = os.epoch("utc") - last_epoch
+						term.setCursorPos(10, 1)
+						term.write("ft=" .. tostring(frame_time) .. "   ")
+						
 				end
 		end
 end

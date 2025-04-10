@@ -10,7 +10,7 @@ local GameInstance = {}
 
 local scr_x, scr_y = term.getSize()
 
-function GameInstance:New(player_number, control, board_xmod, board_ymod, clientConfig)
+function GameInstance:New(control, board_xmod, board_ymod, clientConfig)
 	local game = setmetatable({}, self)
 	self.__index = self
 
@@ -19,7 +19,6 @@ function GameInstance:New(player_number, control, board_xmod, board_ymod, client
 	game.clientConfig = clientConfig
 	game.control = control
 	game.didControlTick = false
-	game.player_number = player_number
 	game.message = {}
 
 	return game
@@ -485,7 +484,7 @@ function GameInstance:Tick()
 				math.max(0, self.state.incomingGarbage - garbage)
 
 				if garbage > 0 then
-					cospc_debuglog(self.player_number, "Doled out " .. garbage .. " lines")
+					cospc_debuglog(nil, "Doled out " .. garbage .. " lines")
 				end
 
 				-- send garbage to enemy player
@@ -503,20 +502,6 @@ function GameInstance:Tick()
 		end
 	end
 
-	-- debug
-	if self.control.native_control then
-		term.setCursorPos(2, scr_y - 2)
-		term.write("Combo: " .. self.state.combo .. "      ")
-
-		term.setCursorPos(2, scr_y - 1)
-		term.write("M=" .. mino.movesLeft .. ", TTL=" .. tostring(mino.lockTimer):sub(1, 4) .. "      ")
-
-		term.setCursorPos(2, scr_y - 0)
-		term.write("POS=(" ..
-		mino.x ..
-		":" ..
-		tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
-	end
 end
 
 -- keep this in gameinstance.lua
