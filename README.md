@@ -12,6 +12,7 @@ Modern multiplayer tetris for ComputerCraft. (Work in progress)
 - Animated piece queue
 
 ### To-do:
+- Figure out why the game randomly starts to lag badly in CraftOS-PC
 - Refactor all code to look prettier
 - Refactor control functions
 - Add score, and let lineclears and piece dropping add to it
