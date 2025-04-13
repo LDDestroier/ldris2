@@ -306,7 +306,7 @@ end
 
 function GameInstance:ReceiveGarbage(amount)
 	if amount ~= 0 then
-		self.state.incomingGarbage = self.state.incomingGarbage + amount
+		self.state.incomingGarbage = math.floor(self.state.incomingGarbage + amount)
 	end
 end
 
@@ -608,6 +608,7 @@ end
 function GameInstance:Resume(evt, doTick)
 	local mino, ghostMino, garbageMino = self.state.mino, self.state.ghostMino, self.state.garbageMino
 	self.message = {} -- sends back to main
+	local doRender = false
 
 	-- handle ghost piece
 	ghostMino.color = "c"
@@ -616,14 +617,13 @@ function GameInstance:Resume(evt, doTick)
 	ghostMino.y = mino.y
 	ghostMino:Move(0, self.state.board.height, true)
 
-	self.state.garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
-
-	self:Render(true)
+	garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
 
 	if evt[1] == "key" and not evt[3] then
 		self.control.keysDown[evt[2]] = 1
 		self.didControlTick = self:ControlTick(false)
 		self.state.controlTickCount = self.state.controlTickCount + 1
+		doRender = true
 
 	elseif evt[1] == "key_up" then
 		self.control.keysDown[evt[2]] = nil
@@ -643,12 +643,18 @@ function GameInstance:Resume(evt, doTick)
 			end
 			self.didControlTick = false
 			self.control.antiControlRepeat = {}
+
+			doRender = true
 		end
 	end
 
 	if self.state.topOut then
 		-- this will have a more elaborate game over sequence later
 		self.message.finished = true
+	end
+
+	if doRender then
+		self:Render(true)
 	end
 
 	return self.message

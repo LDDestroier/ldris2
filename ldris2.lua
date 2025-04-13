@@ -41,6 +41,7 @@ To-do:
 ]]
 
 local scr_x, scr_y = term.getSize()
+local _AMOUNT_OF_GAMES = 2
 
 local Board = require "lib.board"
 local Mino = require "lib.mino"
@@ -88,6 +89,7 @@ local function queueSound(name)
 								sound_timers[os.startTimer((i - 2) * sound_data[name][1])] = sound_data[name][i]
 						end
 				end
+
 		elseif speaker then
 				speaker.playLocalMusic(fs.combine(shell.dir(), "sound/" .. name .. ".ogg"))
 		end
@@ -113,31 +115,35 @@ local function write_debug_stuff(game)
 	end
 end
 
+local function move_games(GAMES)
+	local game_size = { GAMES[1].width + 2, GAMES[1].height }
+	for i = 1, #GAMES do
+		GAMES[i]:Move(
+			(scr_x / 2) - ((#GAMES * game_size[1]) / 2) + (game_size[1] * (i - 1)),
+					(scr_y / 4) - ((game_size[2] - 5) / 2)
+		)
+		end
+end
+
 local function main()
 
 		cospc_debuglog(2, "Starting game.")
 
-		local player_number = 1
 		local tickTimer = os.startTimer(gameConfig.tickDelay)
 		local message, doTick, doResume
 		
 		local frame_time
 		local last_epoch = os.epoch()
 
-		local GAMES = {
-				GameInstance:New(Control:New(clientConfig, false),  0, 0, clientConfig):Initiate(),
-				GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate()
-		}
+		local GAMES = {}
+		for i = 1, _AMOUNT_OF_GAMES do
+			table.insert(GAMES, GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate())
+		end
+		local player_number = math.max(1, math.floor(#GAMES / 2))
 	
 
 		-- center boards on screen
-		local game_size = { GAMES[1].width + 2, GAMES[1].height }
-		for i = 1, #GAMES do
-				GAMES[i]:Move(
-						(scr_x / 2) - ((#GAMES * game_size[1]) / 2) + (game_size[1] * (i - 1)),
-						(scr_y / 4) - ((game_size[2] - 5) / 2)
-				)
-		end
+		move_games(GAMES)
 		
 		for i, _GAME in ipairs(GAMES) do
 			_GAME.control:Clear()
@@ -150,16 +156,36 @@ local function main()
 				
 				term.setCursorPos(1, 1)
 				term.write("t=" .. tostring(resume_count) .. "  ")
+
+				term.setCursorPos(17, 1)
+				term.write("evt=" .. tostring(evt[1]) .. "   ")
+				term.setCursorPos(28, 1)
+				term.write(tostring(evt[2]) .. "                    ")
 				
 				write_debug_stuff(GAMES[player_number])
 				
 				last_epoch = os.epoch("utc")
 
-				if evt[1] == "timer" and evt[2] == tickTimer then
+				if evt[1] == "term_resize" then
+					scr_x, scr_y = term.getSize()
+					term.clear()
+					move_games(GAMES)
+				end
+
+				if evt[1] == "timer" then
+					if evt[2] == tickTimer then
 						doTick = true
 						tickTimer = os.startTimer(gameConfig.tickDelay)
-				else
+					else
 						doTick = false
+
+						if sound_timers[evt[2]] then
+							doResume = false
+							playNote(sound_timers[evt[2]])
+							sound_timers[evt[2]] = nil
+						end
+					end
+
 				end
 
 				if evt[1] == "key" and evt[2] == keys.tab then
@@ -168,13 +194,7 @@ local function main()
 							_GAME.control:Clear()
 							_GAME.control.native_control = (i == player_number)
 						end
-				end
-
-				if (evt[1] == "timer" and sound_timers[evt[2]]) then
-						doResume = false
-						playNote(sound_timers[evt[2]])
-						sound_timers[evt[2]] = nil
-				end
+ 				end
 
 				-- it's wasteful to resume during key repeat events
 				if (evt[1] == "key" and evt[3]) then
@@ -203,7 +223,7 @@ local function main()
 										queueSound(message.sound)
 								end
 
-								-- deal garbage attacks to other game instances
+							-- deal garbage attacks to other game instances
 								if message.attack then
 										for _i, _GAME in ipairs(GAMES) do
 												if _i ~= i then

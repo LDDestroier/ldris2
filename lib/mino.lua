@@ -12,6 +12,8 @@ table.copy = function(tbl)
 	return output
 end
 
+local mathfloor = math.floor
+
 function Mino:New(minoTable, minoID, board, xPos, yPos, oldeMino)
 	local mino = setmetatable(oldeMino or {}, self)
 	self.__index = self
@@ -73,7 +75,7 @@ end
 -- returns true if it IS colliding, and false if it is not
 function Mino:CheckCollision(xMod, yMod, doNotCountBorder, round)
 	local cx, cy -- represents position on board
-	round = round or math.floor
+	round = round or mathfloor
 	for y = 1, self.height do
 		for x = 1, self.width do
 			cx = round(-1 + x + self.x + xMod)
@@ -101,8 +103,8 @@ function Mino:CheckSolid(x, y, relativeToBoard)
 		x = x - self.x + 1
 		y = y - self.y + 1
 	end
-	x = math.floor(x)
-	y = math.floor(y)
+	x = mathfloor(x)
+	y = mathfloor(y)
 	if y >= 1 and y <= self.height and x >= 1 and x <= self.width then
 		return self.shape[y]:sub(x, x) ~= " ", self.doWriteColor and self.color or self.shape[y]:sub(x, x)
 	else
@@ -193,7 +195,7 @@ function Mino:Move(x, y, doSlam, expendLockMove)
 			-- handle Y position
 			if y ~= 0 then
 				step = y / math.abs(y)
-				round = self.yFloat > 0 and math.floor or math.ceil
+				round = self.yFloat > 0 and mathfloor or math.ceil
 				if self:CheckCollision(0, step) then
 					self.yFloat = 0
 					didMoveY = false
@@ -217,7 +219,7 @@ function Mino:Move(x, y, doSlam, expendLockMove)
 			-- handle x position
 			if x ~= 0 then
 				step = x / math.abs(x)
-				round = self.xFloat > 0 and math.floor or math.ceil
+				round = self.xFloat > 0 and mathfloor or math.ceil
 				if self:CheckCollision(step, 0) then
 					self.xFloat = 0
 					didMoveX = false
