@@ -1,4 +1,5 @@
--- makes a Mino, a tetris piece that can be rendered on a Board
+-- makes a Mino, a tetris piece that can be writted to and rendered on a Board
+-- TODO: precalculate all rotated minos so that I don't have to recalculate their rotated state every time
 local Mino = {}
 
 local gameConfig = require "lib.gameconfig"
