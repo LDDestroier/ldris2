@@ -4,8 +4,8 @@
 local Mino = require "lib.mino"
 local Board = require "lib.board"
 local gameConfig = require "lib.gameconfig"
-local cospc_debuglog = require "lib.debug"
-
+local GameDebug = require "lib.gamedebug"
+local cospc_debuglog = GameDebug.cospc_debuglog
 local GameInstance = {}
 
 local scr_x, scr_y = term.getSize()
@@ -48,8 +48,8 @@ function GameInstance:Initiate()
 		backToBack = 0,      -- amount of tetris/t-spins comboed
 		spinLevel = 0        -- 0 = no special spin
 	}                        -- 1 = mini spin
-	-- 2 = Z/S/J/L spin
-	-- 3 = T spin
+							 -- 2 = Z/S/J/L spin
+							 -- 3 = T spin
 
 	-- create boards
 	-- main gameplay board
@@ -226,12 +226,12 @@ function GameInstance:MakeDefaultMino()
 	end
 
 	return Mino:New(nil,
-	nextPiece,
-	self.state.board,
-	math.floor(self.state.board.width / 2 - 1) + (gameConfig.minos[nextPiece].spawnOffsetX or 0),
-	math.floor(gameConfig.board_height_visible + 1) + (gameConfig.minos[nextPiece].spawnOffsetY or 0),
-	self.state.mino
-)
+		nextPiece,
+		self.state.board,
+		math.floor(self.state.board.width / 2 - 1) + (gameConfig.minos[nextPiece].spawnOffsetX or 0),
+		math.floor(gameConfig.board_height_visible + 1) + (gameConfig.minos[nextPiece].spawnOffsetY or 0),
+		self.state.mino
+	)
 end
 
 function GameInstance:CalculateGarbage(linesCleared)
@@ -257,9 +257,17 @@ function GameInstance:CalculateGarbage(linesCleared)
 	-- add combo bonus
 	output = output + math.max(0, math.floor((self.state.combo - 1) / 2))
 
-	-- add perfect clear bonus
-	if self.didJustClearLine and self.state.board:CheckPerfectClear() then
-		output = output + 10
+	
+	if self.didJustClearLine then
+		-- add back-to-back bonus
+		if self.state.backToBack >= 2 then
+			output = output + 1
+		end
+
+		-- add perfect clear bonus
+		if self.state.board:CheckPerfectClear() then
+			output = output + 10
+		end
 	end
 
 	return output
@@ -447,10 +455,7 @@ function GameInstance:Tick()
 			end
 		end
 
-		-- if the hold attempt fails (say, you already held a piece), it wouldn't do to check for a top-out or line clears
-		if doCheckStuff then
-			-- TODO: this is where I'd put initial rotation
-
+		if doMakeNewMino then
 			-- check for top-out due to obstructed mino upon entry
 			-- attempt to move mino at most 2 spaces upwards before considering it fully topped out
 			self.state.topOut = true
@@ -463,10 +468,16 @@ function GameInstance:Tick()
 				end
 			end
 
+			-- TODO: this is where I'd put initial rotation
+		end
+
+		-- calls the frame when a new mino is generated
+		-- if the hold attempt fails (say, you already held a piece), it wouldn't do to check for a top-out or line clears
+		if doCheckStuff then
+
 			if not self.state.didHold then
 				if #linesCleared == 0 then
 					self.state.combo = 0
-					self.state.backToBack = 0
 				else
 					self:MakeSound("lineclear")
 					self.didJustClearLine = true
@@ -500,8 +511,52 @@ function GameInstance:Tick()
 				self.state.spinLevel = 0
 			end
 		end
+
 	end
 
+end
+
+function GameInstance:CheckSpecialSpin(mino, kick_count)
+	-- intended for T-tetraminos
+	-- if spinID == 1 and not all 3 corners are occupied on the board, no speical spin (return 0)
+	-- if spinID == 1 and only one of the "top" corners are occupied on the board, it is a T-spin mini (return 1)
+	-- (exception: if kick_count == 6, which is the TST kick, return 3)
+	-- if spinID == 2 (for z/s spins) or 3 (for I spins), run separate logic (return 2)
+	-- if spinID == 1 and both "top" corners are occupied, it's a full T-spin (return 3)
+	
+	if mino.spinID == 1 then
+		-- sheesh
+		local corners = {
+			mino.board:IsSolid(mino.x, mino.y),
+			mino.board:IsSolid(mino.x + mino.width - 1, mino.y),
+			mino.board:IsSolid(mino.x + mino.width - 1, mino.y + mino.height - 1),
+			mino.board:IsSolid(mino.x, mino.y + mino.height),
+		}
+		local solid_count = 0
+		for i = 1, #corners do
+			if corners[i] then
+				solid_count = solid_count + 1
+			end
+		end
+
+		if solid_count >= 3 then
+			if (corners[mino.rotation + 1] and corners[((mino.rotation + 1) % 4) + 1]) or kick_count == 6 then
+				return 3
+			else
+				return 1
+			end
+		end
+
+	elseif mino.spinID == 2 or mino.spinID == 3 then
+		if (
+			mino:CheckCollision(1, 0) and
+			mino:CheckCollision(-1, 0) and
+			mino:CheckCollision(0, -1)
+		) then return 2 else return 0 end
+	end
+	
+	return 0
+	
 end
 
 -- keep this in gameinstance.lua
@@ -510,6 +565,7 @@ end
 function GameInstance:ControlTick(onlyFastActions)
 	local dc, dmx, dmy -- did collide, did move X, did move Y
 	local didSlowAction = false
+	local _, kick_count
 
 	local control = self.control
 	local mino = self.state.mino
@@ -571,9 +627,12 @@ function GameInstance:ControlTick(onlyFastActions)
 			didSlowAction = true
 		end
 	end
+
 	if control:CheckControl("rotate_ccw", false) and gameConfig.can_rotate then
-		mino:Rotate(-1, true)
+		_, _, kick_count = mino:Rotate(-1, true)
 		if mino.spinID <= gameConfig.spin_mode then
+			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
+			--[[
 			if (
 				mino:CheckCollision(1, 0) and
 				mino:CheckCollision(-1, 0) and
@@ -583,12 +642,15 @@ function GameInstance:ControlTick(onlyFastActions)
 			else
 				self.state.spinLevel = 0
 			end
+			--]]
 		end
 		control.antiControlRepeat["rotate_ccw"] = true
 	end
 	if control:CheckControl("rotate_cw", false) and gameConfig.can_rotate then
-		mino:Rotate(1, true)
+		_, _, kick_count = mino:Rotate(1, true)
 		if mino.spinID <= gameConfig.spin_mode then
+			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
+			--[[
 			if (
 				mino:CheckCollision(1, 0) and
 				mino:CheckCollision(-1, 0) and
@@ -598,8 +660,15 @@ function GameInstance:ControlTick(onlyFastActions)
 			else
 				self.state.spinLevel = 0
 			end
+			--]]
 		end
 		control.antiControlRepeat["rotate_cw"] = true
+	end
+	if control:CheckControl("rotate_180", false) and gameConfig.can_rotate and gameConfig.can_180_spin then
+		_, _, kick_count = mino:Rotate(2, true)
+		if mino.spinID <= gameConfig.spin_mode then
+			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
+		end
 	end
 
 	return didSlowAction
@@ -609,15 +678,6 @@ function GameInstance:Resume(evt, doTick)
 	local mino, ghostMino, garbageMino = self.state.mino, self.state.ghostMino, self.state.garbageMino
 	self.message = {} -- sends back to main
 	local doRender = false
-
-	-- handle ghost piece
-	ghostMino.color = "c"
-	ghostMino.shape = mino.shape
-	ghostMino.x = mino.x
-	ghostMino.y = mino.y
-	ghostMino:Move(0, self.state.board.height, true)
-
-	garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
 
 	if evt[1] == "key" and not evt[3] then
 		self.control.keysDown[evt[2]] = 1
@@ -638,7 +698,8 @@ function GameInstance:Resume(evt, doTick)
 			self:ControlTick(self.didControlTick)
 			self.state.controlTickCount = self.state.controlTickCount + 1
 			if not self.state.paused then
-				self:Tick(message)
+				GameDebug.profile(" GameInstant:Tick() ft=", scr_y-3, function() return self:Tick(message) end)
+				--self:Tick(message)
 				self.state.gameTickCount = self.state.gameTickCount + 1
 			end
 			self.didControlTick = false
@@ -654,6 +715,15 @@ function GameInstance:Resume(evt, doTick)
 	end
 
 	if doRender then
+		-- handle ghost piece
+		ghostMino.color = "c"
+		ghostMino.shape = mino.shape
+		ghostMino.x = mino.x
+		ghostMino.y = mino.y
+		ghostMino:Move(0, self.state.board.height, true)
+
+		garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
+
 		self:Render(true)
 	end
 

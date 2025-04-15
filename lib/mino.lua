@@ -93,7 +93,7 @@ function Mino:CheckCollision(xMod, yMod, doNotCountBorder, round)
 		end
 	end
 end
-return false
+	return false
 end
 
 -- checks whether or not the (x, y) position of the mino's shape is solid
@@ -106,7 +106,7 @@ function Mino:CheckSolid(x, y, relativeToBoard)
 	x = mathfloor(x)
 	y = mathfloor(y)
 	if y >= 1 and y <= self.height and x >= 1 and x <= self.width then
-		return self.shape[y]:sub(x, x) ~= " ", self.doWriteColor and self.color or self.shape[y]:sub(x, x)
+		return (self.shape[y] or ""):sub(x, x) ~= " ", self.doWriteColor and self.color or self.shape[y]:sub(x, x)
 	else
 		return false
 	end
@@ -114,22 +114,19 @@ end
 
 -- direction = 1: clockwise
 -- direction = -1: counter-clockwise
+-- mino.rotation ranges from 0-3
 function Mino:Rotate(direction, expendLockMove)
 	local oldShape = table.copy(self.shape)
 	local kickTable = gameConfig.kickTables[gameConfig.currentKickTable]
 	local output = {}
 	local success = false
-	local newRotation = ((self.rotation + direction + 1) % 4) - 1
-	local kickRotTranslate = {
-		[-1] = "3",
-		[0] = "0",
-		[1] = "1",
-		[2] = "2",
-	}
+	local kick_count = 0
+	local newRotation = (self.rotation + direction) % 4
+
 	if self.active then
 		-- get the specific offset table for the type of rotation based on the mino type
 		local kickX, kickY
-		local kickRot = kickRotTranslate[self.rotation] .. kickRotTranslate[newRotation]
+		local kickRot = tostring(self.rotation) .. newRotation
 
 		-- translate the mino piece
 		for y = 1, self.width do
@@ -139,9 +136,12 @@ function Mino:Rotate(direction, expendLockMove)
 					output[y] = output[y] .. oldShape[x]:sub(-y, -y)
 				elseif direction == 1 then
 					output[y] = oldShape[x]:sub(y, y) .. output[y]
+				elseif direction == 2 then
+					output[y] = oldShape[self.height - y + 1]:sub(x, x) .. output[y]
 				end
 			end
 		end
+		
 		self.width, self.height = self.height, self.width
 		self.shape = output
 		-- it's time to do some floor and wall kicking
@@ -151,6 +151,7 @@ function Mino:Rotate(direction, expendLockMove)
 				kickY = -kickTable[self.kickID][kickRot][i][2]
 				if not self:Move(kickX, kickY, false) then
 					success = true
+					kick_count = i
 					break
 				end
 			end
@@ -176,7 +177,11 @@ function Mino:Rotate(direction, expendLockMove)
 		end
 	end
 
-	return self, success
+	-- round xFloat/yFloat values
+	self.xFloat = math.floor(self.xFloat * 100) * 0.01
+	self.yFloat = math.floor(self.yFloat * 100) * 0.01
+
+	return self, success, kick_count
 end
 
 -- if doSlam == true, moves as far as it can before terminating

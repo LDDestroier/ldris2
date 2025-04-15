@@ -13,6 +13,7 @@ return {
 	spin_mode = 1,				-- 1 = allows T-spins
 								-- 2 = allows J/L-spins
 								-- 3 = allows ALL SPINS! Similar to STUPID mode in tetr.io
+	can_180_spin = true,		-- if false, 180 spins are disallowed
 	can_rotate = true,			-- if false, will disallow ALL piece rotation (meme mode)
 	startingGravity = 0.15,		-- gravity per tick for minos
 	lock_move_limit = 30,		-- amount of moves a mino can do after descending below its lowest point yet traversed

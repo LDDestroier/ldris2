@@ -23,6 +23,7 @@ Current features:
 + Real SRS rotation and wall-kicking!
 + 7bag randomization!
 + Modern-feeling controls!
++ Garbage attack!
 + Ghost piece!
 + Piece holding!
 + Sonic drop!
@@ -41,18 +42,20 @@ To-do:
 ]]
 
 local scr_x, scr_y = term.getSize()
-local _AMOUNT_OF_GAMES = 2
+local _AMOUNT_OF_GAMES = 1
 
 local Board = require "lib.board"
 local Mino = require "lib.mino"
 local GameInstance = require "lib.gameinstance"
 local Control = require "lib.control"
-local cospc_debuglog = require "lib.debug"
+local GameDebug = require "lib.gamedebug"
+local cospc_debuglog = GameDebug.cospc_debuglog
 local clientConfig = require "lib.clientconfig" -- client config can be changed however you please
 local gameConfig = require "lib.gameconfig"     -- ideally, only clients with IDENTICAL game configs should face one another
 gameConfig.kickTables = require "lib.kicktables"
 
 local resume_count = 0
+
 
 local speaker = peripheral.find("speaker")
 if (not speaker) and periphemu then
@@ -205,6 +208,7 @@ local function main()
 				if doResume then -- do not resume on key repeat events!
 						resume_count = resume_count + 1
 						for i, GAME in ipairs(GAMES) do
+--								message = GameDebug.profile("Game " .. i, i + 1, function() return (GAME:Resume(evt, doTick) or {}) end)
 								message = GAME:Resume(evt, doTick) or {}
 
 								-- end game
@@ -223,7 +227,7 @@ local function main()
 										queueSound(message.sound)
 								end
 
-							-- deal garbage attacks to other game instances
+								-- deal garbage attacks to other game instances
 								if message.attack then
 										for _i, _GAME in ipairs(GAMES) do
 												if _i ~= i then
@@ -238,6 +242,8 @@ local function main()
 						term.write("ft=" .. tostring(frame_time) .. "   ")
 						
 				end
+				
+				GameDebug.broadcast(GAMES)
 		end
 end
 

@@ -4,6 +4,7 @@ local Board = {}
 local gameConfig = require "lib.gameconfig"
 
 local stringrep = string.rep
+local mathfloor = math.floor
 
 function Board:New(x, y, width, height, blankColor)
     local board = setmetatable({}, self)
@@ -16,7 +17,7 @@ function Board:New(x, y, width, height, blankColor)
     board.blankColor = blankColor or "7" -- color if no minos are in that spot
     board.transparentColor = "f"         -- color if the board tries to render where there is no board
     board.garbageColor = "8"
-    board.visibleHeight = height and math.floor(board.height / 2) or gameConfig.board_height_visible
+    board.visibleHeight = height and mathfloor(board.height / 2) or gameConfig.board_height_visible
     board.charHeight = math.ceil(board.visibleHeight * (2 / 3))
 
     for y = 1, board.height do
@@ -27,12 +28,24 @@ function Board:New(x, y, width, height, blankColor)
 end
 
 function Board:Write(x, y, color)
-    x = math.floor(x)
-    y = math.floor(y)
+    x = mathfloor(x)
+    y = mathfloor(y)
     if not self.contents[y] then
         error("tried to write outsite size of board!")
     end
     self.contents[y] = self.contents[y]:sub(1, x - 1) .. color .. self.contents[y]:sub(x + 1)
+end
+
+function Board:IsSolid(x, y)
+	x = mathfloor(x)
+	y = mathfloor(y)
+	if self.contents[y] then
+		if x >= 1 and x <= self.width then
+			return self.contents[y]:sub(x, x) ~= self.blankColor, self.contents[y]:sub(x, x)
+		end
+	end
+
+	return true, self.blankColor
 end
 
 function Board:AddGarbage(amount)

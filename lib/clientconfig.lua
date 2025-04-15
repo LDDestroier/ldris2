@@ -2,6 +2,7 @@ return {
 	controls = {
 		rotate_ccw = keys.z,
 		rotate_cw = keys.x,
+		rotate_180 = keys.c,
 		move_left = keys.left,
 		move_right = keys.right,
 		soft_drop = keys.down,
