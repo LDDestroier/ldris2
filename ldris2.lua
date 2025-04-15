@@ -1,3 +1,5 @@
+local _AMOUNT_OF_GAMES = 2
+local _PRINT_DEBUG_INFO = false
 --[[
 
 ,--,
@@ -42,7 +44,6 @@ To-do:
 ]]
 
 local scr_x, scr_y = term.getSize()
-local _AMOUNT_OF_GAMES = 1
 
 local Board = require "lib.board"
 local Mino = require "lib.mino"
@@ -50,12 +51,11 @@ local GameInstance = require "lib.gameinstance"
 local Control = require "lib.control"
 local GameDebug = require "lib.gamedebug"
 local cospc_debuglog = GameDebug.cospc_debuglog
-local clientConfig = require "lib.clientconfig" -- client config can be changed however you please
-local gameConfig = require "lib.gameconfig"     -- ideally, only clients with IDENTICAL game configs should face one another
+local clientConfig = require "config.clientconfig" -- client config can be changed however you please
+local gameConfig = require "config.gameconfig"     -- ideally, only clients with IDENTICAL game configs should face one another
 gameConfig.kickTables = require "lib.kicktables"
 
 local resume_count = 0
-
 
 local speaker = peripheral.find("speaker")
 if (not speaker) and periphemu then
@@ -77,7 +77,7 @@ local sound_data = {
 
 local function playNote(note)
 		if speaker then
-				speaker.playNote("guitar", 2, note)
+				speaker.playNote("guitar", 1, note)
 		end
 end
 
@@ -99,10 +99,8 @@ local function queueSound(name)
 end
 
 local function write_debug_stuff(game)
-	if game.control.native_control then
+	if game.control.native_control and _PRINT_DEBUG_INFO then
 		local mino = game.state.mino
-		term.setCursorPos(2, scr_y - 2)
-		term.write("Lines: " .. game.state.linesCleared .. "   ")
 		
 		term.setCursorPos(14, scr_y - 2)
 		term.write("Combo: " .. game.state.combo .. "      ")
@@ -140,7 +138,7 @@ local function main()
 
 		local GAMES = {}
 		for i = 1, _AMOUNT_OF_GAMES do
-			table.insert(GAMES, GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate())
+			table.insert(GAMES, GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate(gameConfig.minos))
 		end
 		local player_number = math.max(1, math.floor(#GAMES / 2))
 	
@@ -157,15 +155,17 @@ local function main()
 				doResume = true
 				evt = { os.pullEvent() }
 				
-				term.setCursorPos(1, 1)
-				term.write("t=" .. tostring(resume_count) .. "  ")
+				if _PRINT_DEBUG_INFO then
+					term.setCursorPos(1, 1)
+					term.write("t=" .. tostring(resume_count) .. "  ")
 
-				term.setCursorPos(17, 1)
-				term.write("evt=" .. tostring(evt[1]) .. "   ")
-				term.setCursorPos(28, 1)
-				term.write(tostring(evt[2]) .. "                    ")
-				
-				write_debug_stuff(GAMES[player_number])
+					term.setCursorPos(17, 1)
+					term.write("evt=" .. tostring(evt[1]) .. "   ")
+					term.setCursorPos(28, 1)
+					term.write(tostring(evt[2]) .. "                    ")
+					
+					write_debug_stuff(GAMES[player_number])
+				end
 				
 				last_epoch = os.epoch("utc")
 
@@ -211,16 +211,17 @@ local function main()
 --								message = GameDebug.profile("Game " .. i, i + 1, function() return (GAME:Resume(evt, doTick) or {}) end)
 								message = GAME:Resume(evt, doTick) or {}
 
-								-- end game
-								if message.finished then
+								-- restart game after topout
+								if message.gameover then
 										cospc_debuglog(i, "Game over!")
-										-- for demo purposes, just restart games that fail if they aren't the player
-										if i ~= player_number then
-												GAME:Initiate()
-										else
-												return
-										end
+										GAME:Initiate()
 								end
+								
+								-- quit game
+								if message.quit then
+									return
+								end
+								
 
 								-- queue timers for speaker notes
 								if message.sound then
@@ -238,9 +239,10 @@ local function main()
 						end
 						
 						frame_time = os.epoch("utc") - last_epoch
-						term.setCursorPos(10, 1)
-						term.write("ft=" .. tostring(frame_time) .. "   ")
-						
+						if _PRINT_DEBUG_INFO then
+							term.setCursorPos(10, 1)
+							term.write("ft=" .. tostring(frame_time) .. "   ")
+						end
 				end
 				
 				GameDebug.broadcast(GAMES)
@@ -274,8 +276,10 @@ cospc_debuglog(nil, "Closed LDRIS2.")
 
 term.setCursorPos(1, scr_y - 1)
 term.clearLine()
+term.setTextColor(colors.yellow)
 print("Thank you for playing!")
 term.setCursorPos(1, scr_y - 0)
 term.clearLine()
+term.setTextColor(colors.white)
 
 sleep(0.05)

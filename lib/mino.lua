@@ -2,7 +2,7 @@
 -- TODO: precalculate all rotated minos so that I don't have to recalculate their rotated state every time
 local Mino = {}
 
-local gameConfig = require "lib.gameconfig"
+local gameConfig = require "config.gameconfig"
 
 -- recursively copies the contents of a table
 table.copy = function(tbl)
@@ -15,21 +15,22 @@ end
 
 local mathfloor = math.floor
 
-function Mino:New(minoTable, minoID, board, xPos, yPos, oldeMino)
+function Mino:New(mino_table, minoID, board, xPos, yPos, oldeMino)
 	local mino = setmetatable(oldeMino or {}, self)
 	self.__index = self
 
-	local minoTable = minoTable or gameConfig.minos
-	if not minoTable[minoID] then
+	mino_table = mino_table or gameConfig.minos
+	if not mino_table[minoID] then
 		error("tried to spawn mino with invalid ID '" .. tostring(minoID) .. "'")
 	else
-		mino.shape = minoTable[minoID].shape
-		mino.spinID = minoTable[minoID].spinID
-		mino.kickID = minoTable[minoID].kickID
-		mino.color = minoTable[minoID].color
-		mino.name = minoTable[minoID].name
+		mino.shape = mino_table[minoID].shape
+		mino.spinID = mino_table[minoID].spinID
+		mino.kickID = mino_table[minoID].kickID
+		mino.color = mino_table[minoID].color
+		mino.name = mino_table[minoID].name
 	end
 
+	mino.mino_table = mino_table
 	mino.finished = false
 	mino.active = true
 	mino.spawnTimer = 0
@@ -106,11 +107,14 @@ function Mino:CheckSolid(x, y, relativeToBoard)
 	end
 	x = mathfloor(x)
 	y = mathfloor(y)
-	if y >= 1 and y <= self.height and x >= 1 and x <= self.width then
-		return (self.shape[y] or ""):sub(x, x) ~= " ", self.doWriteColor and self.color or self.shape[y]:sub(x, x)
-	else
-		return false
+	if y >= 1 and y <= #self.shape then
+		if x >= 1 and x <= #self.shape[y] then
+			return (self.shape[y] or ""):sub(x, x) ~= " ",
+			self.doWriteColor and self.color or self.shape[y]:sub(x, x)
+		end
 	end
+	
+	return false
 end
 
 -- direction = 1: clockwise
@@ -127,7 +131,7 @@ function Mino:Rotate(direction, expendLockMove)
 	if self.active then
 		-- get the specific offset table for the type of rotation based on the mino type
 		local kickX, kickY
-		local kickRot = tostring(self.rotation) .. newRotation
+		local kickRot = self.rotation .. newRotation
 
 		-- translate the mino piece
 		for y = 1, self.width do
@@ -143,7 +147,9 @@ function Mino:Rotate(direction, expendLockMove)
 			end
 		end
 		
-		self.width, self.height = self.height, self.width
+		if direction % 2 == 1 then
+			self.width, self.height = self.height, self.width
+		end
 		self.shape = output
 		-- it's time to do some floor and wall kicking
 		if self.board and self:CheckCollision(0, 0) then
@@ -159,14 +165,17 @@ function Mino:Rotate(direction, expendLockMove)
 		else
 			success = true
 		end
+		
 		if success then
 			self.rotation = newRotation
-			self.height, self.width = self.width, self.height
 		else
 			self.shape = oldShape
+			if direction % 2 == 1 then
+				self.width, self.height = self.height, self.width
+			end
 		end
 
-		if expendLockMove and not gameConfig.minos[self.minoID].noDelayLock then
+		if expendLockMove and not self.mino_table[self.minoID].noDelayLock then
 			self.movesLeft = self.movesLeft - 1
 			if self.movesLeft <= 0 then
 				if self:CheckCollision(0, 1) then
@@ -183,6 +192,56 @@ function Mino:Rotate(direction, expendLockMove)
 	self.yFloat = math.floor(self.yFloat * 100) * 0.01
 
 	return self, success, kick_count
+end
+
+-- same as Mino:Rotate, but uses lookup tables to be faster
+function Mino:RotateLookup(direction, expendLockMove, mino_rotable)
+	local kickTable = gameConfig.kickTables[gameConfig.currentKickTable]
+	local success = false
+	local kick_count = 0
+	local old_rotation = self.rotation
+	local newRotation = (self.rotation + direction) % 4
+	local kickRot = self.rotation .. newRotation
+	
+	self.shape = mino_rotable[self.minoID][newRotation + 1]
+	if direction % 2 == 1 then
+		self.width, self.height = self.height, self.width
+	end
+	
+	-- it's time to do some floor and wall kicking
+	if self.board and self:CheckCollision(0, 0) then
+		for i = 1, #kickTable[self.kickID][kickRot] do
+			kickX = kickTable[self.kickID][kickRot][i][1]
+			kickY = -kickTable[self.kickID][kickRot][i][2]
+			if not self:Move(kickX, kickY, false) then
+				success = true
+				kick_count = i
+				break
+			end
+		end
+	else
+		success = true
+	end
+	
+	if success then
+		self.rotation = newRotation
+	else
+		self.shape = mino_rotable[self.minoID][old_rotation + 1]
+		if direction % 2 == 1 then
+			self.width, self.height = self.height, self.width
+		end
+	end
+	
+	if expendLockMove and not self.mino_table[self.minoID].noDelayLock then
+		self.movesLeft = self.movesLeft - 1
+		if self.movesLeft <= 0 then
+			if self:CheckCollision(0, 1) then
+				self.finished = 1
+			end
+		else
+			self.lockTimer = gameConfig.lock_delay
+		end
+	end
 end
 
 -- if doSlam == true, moves as far as it can before terminating

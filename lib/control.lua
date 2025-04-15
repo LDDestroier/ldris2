@@ -1,6 +1,6 @@
 local ControlAPI = {}
 
-local gameConfig = require "lib.gameconfig"
+local gameConfig = require "config.gameconfig"
 
 function ControlAPI:New(clientConfig, native_control)
 	local control = setmetatable({}, self)
@@ -24,6 +24,8 @@ function ControlAPI:CheckControl(controlName, repeatTime, repeatDelay)
 	repeatDelay = repeatDelay or 1
 
 	local clientConfig = self.clientConfig
+	
+	local processed_controls = {}
 
 	if self.native_control then
 		-- populate self.controlsDown based on self.keysDown
@@ -31,18 +33,31 @@ function ControlAPI:CheckControl(controlName, repeatTime, repeatDelay)
 			self.controlsDown[name] = self.keysDown[_key]
 		end
 	end
+	
+	for k,v in pairs(self.controlsDown) do
+		processed_controls[k] = v
+	end
+	
+	-- disallow simultaneous move left + move right inputs
+	if self.controlsDown["move_left"] and self.controlsDown["move_right"] then
+		if self.controlsDown["move_left"] > self.controlsDown["move_right"] then
+			processed_controls["move_left"] = nil
+		else
+			processed_controls["move_right"] = nil
+		end
+	end
 
-	if self.controlsDown[controlName] then
+	if processed_controls[controlName] then
 		if not self.antiControlRepeat[controlName] then
 			if repeatTime then
-				return self.controlsDown[controlName] == 1 or
+				return processed_controls[controlName] == 1 or
 				(
-					self.controlsDown[controlName] >= (repeatTime * (1 / gameConfig.tickDelay)) and (
-						repeatDelay and ((self.controlsDown[controlName] * gameConfig.tickDelay) % repeatDelay == 0) or true
+					processed_controls[controlName] >= (repeatTime * (1 / gameConfig.tickDelay)) and (
+						repeatDelay and ((processed_controls[controlName] * gameConfig.tickDelay) % repeatDelay == 0) or true
 					)
 				)
 			else
-				return self.controlsDown[controlName] == 1
+				return processed_controls[controlName] == 1
 			end
 		end
 	else

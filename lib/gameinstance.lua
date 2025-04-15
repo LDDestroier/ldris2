@@ -3,9 +3,11 @@
 
 local Mino = require "lib.mino"
 local Board = require "lib.board"
-local gameConfig = require "lib.gameconfig"
+local gameConfig = require "config.gameconfig"
+
 local GameDebug = require "lib.gamedebug"
 local cospc_debuglog = GameDebug.cospc_debuglog
+
 local GameInstance = {}
 
 local scr_x, scr_y = term.getSize()
@@ -24,7 +26,22 @@ function GameInstance:New(control, board_xmod, board_ymod, clientConfig)
 	return game
 end
 
-function GameInstance:Initiate()
+-- creates a lookup table of the rotated states of every mino
+function GameInstance:MakeRotatedMinoLookup(mino_table)
+	local output = {}
+	local mino
+	for i, mData in ipairs(mino_table) do
+		output[i] = {
+			table.copy( mino_table[i].shape ),
+			table.copy( Mino:New(mino_table, i):Rotate(1).shape ),
+			table.copy( Mino:New(mino_table, i):Rotate(2).shape ),
+			table.copy( Mino:New(mino_table, i):Rotate(-1).shape )
+		}
+	end
+	return output
+end
+
+function GameInstance:Initiate(mino_table)
 	self.state = {
 		gravity = gameConfig.startingGravity,
 		targetPlayer = 0,
@@ -50,6 +67,11 @@ function GameInstance:Initiate()
 	}                        -- 1 = mini spin
 							 -- 2 = Z/S/J/L spin
 							 -- 3 = T spin
+
+	if (mino_table or not self.mino_rotable) then
+		self.mino_rotable = self:MakeRotatedMinoLookup(mino_table or gameConfig.minos)
+	end
+	self.mino_table = mino_table
 
 	-- create boards
 	-- main gameplay board
@@ -98,7 +120,7 @@ function GameInstance:Initiate()
 
 	for i = 1, self.clientConfig.queue_length do
 		self.state.queueMinos[i] = Mino:New(
-			nil,
+			self.mino_table,
 			self.state.queue[i + 1],
 			self.state.queueBoard,
 			1,
@@ -109,7 +131,7 @@ function GameInstance:Initiate()
 	self.queue_anim = 0
 
 	self.state.mino = self:MakeDefaultMino()
-	self.state.ghostMino = Mino:New(nil, self.state.mino.minoID, self.state.board, self.state.mino.x, self.state.mino.y,
+	self.state.ghostMino = Mino:New(self.mino_table, self.state.mino.minoID, self.state.board, self.state.mino.x, self.state.mino.y,
 	{})
 	self.state.ghostMino.doWriteColor = true
 
@@ -225,7 +247,8 @@ function GameInstance:MakeDefaultMino()
 		nextPiece = self:CyclePiece()
 	end
 
-	return Mino:New(nil,
+	return Mino:New(
+		self.mino_table,
 		nextPiece,
 		self.state.board,
 		math.floor(self.state.board.width / 2 - 1) + (gameConfig.minos[nextPiece].spawnOffsetX or 0),
@@ -330,7 +353,7 @@ end
 function GameInstance:AnimateQueue()
 	table.remove(self.state.queueMinos, 1)
 	self.state.queueMinos[#self.state.queueMinos + 1] = Mino:New(
-		nil,
+		self.mino_table,
 		self.state.queue[self.clientConfig.queue_length],
 		self.state.queueBoard,
 		1,
@@ -415,7 +438,7 @@ function GameInstance:Tick()
 				-- draw held piece
 				self.state.holdBoard:Clear()
 				Mino:New(
-					nil,
+					self.mino_table,
 					mino.minoID,
 					self.state.holdBoard,
 					1 + (gameConfig.minos[mino.minoID].spawnOffsetX or 0),
@@ -437,7 +460,7 @@ function GameInstance:Tick()
 
 		if doMakeNewMino then
 			self.state.mino = self:MakeDefaultMino(); mino = self.state.mino
-			self.state.ghostMino = Mino:New(nil, mino.minoID, self.state.board, mino.x, mino.y, {}); ghostMino = self.state.ghostMino
+			self.state.ghostMino = Mino:New(self.mino_table, mino.minoID, self.state.board, mino.x, mino.y, {}); ghostMino = self.state.ghostMino
 			self.state.ghostMino.doWriteColor = true
 
 			if (not self.state.didHold) and (_delay > 0) then
@@ -622,14 +645,15 @@ function GameInstance:ControlTick(onlyFastActions)
 			end
 		end
 		if control:CheckControl("quit", false) then
-			self.state.topOut = true
+			--self.state.topOut = true
+			self.message.quit = true
 			control.antiControlRepeat["quit"] = true
 			didSlowAction = true
 		end
 	end
 
 	if control:CheckControl("rotate_ccw", false) and gameConfig.can_rotate then
-		_, _, kick_count = mino:Rotate(-1, true)
+		_, _, kick_count = mino:RotateLookup(-1, true, self.mino_rotable)
 		if mino.spinID <= gameConfig.spin_mode then
 			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
 			--[[
@@ -647,7 +671,7 @@ function GameInstance:ControlTick(onlyFastActions)
 		control.antiControlRepeat["rotate_ccw"] = true
 	end
 	if control:CheckControl("rotate_cw", false) and gameConfig.can_rotate then
-		_, _, kick_count = mino:Rotate(1, true)
+		_, _, kick_count = mino:RotateLookup(1, true, self.mino_rotable)
 		if mino.spinID <= gameConfig.spin_mode then
 			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
 			--[[
@@ -665,7 +689,7 @@ function GameInstance:ControlTick(onlyFastActions)
 		control.antiControlRepeat["rotate_cw"] = true
 	end
 	if control:CheckControl("rotate_180", false) and gameConfig.can_rotate and gameConfig.can_180_spin then
-		_, _, kick_count = mino:Rotate(2, true)
+		_, _, kick_count = mino:RotateLookup(2, true, self.mino_rotable)
 		if mino.spinID <= gameConfig.spin_mode then
 			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
 		end
@@ -691,7 +715,6 @@ function GameInstance:Resume(evt, doTick)
 
 	if evt[1] == "timer" then
 		if doTick then
-			--			tickTimer = os.startTimer(0.05)
 			for k, v in pairs(self.control.keysDown) do
 				self.control.keysDown[k] = 1 + v
 			end
@@ -710,7 +733,7 @@ function GameInstance:Resume(evt, doTick)
 
 	if self.state.topOut then
 		-- this will have a more elaborate game over sequence later
-		self.message.finished = true
+		self.message.gameover = true
 	end
 
 	if doRender then
@@ -723,8 +746,15 @@ function GameInstance:Resume(evt, doTick)
 
 		garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
 
-		--self:Render(true)
-		GameDebug.profile("Render", scr_y-3, function() self:Render(true) end)
+		self:Render(true)
+		--GameDebug.profile("Render", scr_y-3, function() self:Render(true) end)
+		if true then
+			term.setCursorPos(self.state.board.x, self.board_ymod + self.height + 2)
+			term.setTextColor(colors.lightGray)
+			term.write("Lines: ")
+			term.setTextColor(colors.yellow)
+			term.write(self.state.linesCleared)
+		end
 	end
 
 	return self.message

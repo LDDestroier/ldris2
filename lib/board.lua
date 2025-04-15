@@ -1,7 +1,7 @@
 -- generates a new board, on which polyominos can be placed and interact
 local Board = {}
 
-local gameConfig = require "lib.gameconfig"
+local gameConfig = require "config.gameconfig"
 
 local stringrep = string.rep
 local mathfloor = math.floor
