@@ -13,7 +13,8 @@ Modern (to-be) multiplayer tetris for ComputerCraft. (Work in progress)
 - Animated piece queue
 
 ### To-do:
-- Figure out why the game randomly starts to lag badly in CraftOS-PC
+- Fix garbage collector-related slowdown when played in CraftOS-PC
+- - (if related to string concatenation, then damn...)
 - Refactor code to look prettier
 - Find out why the minos don't instantly move up when board is almost full, and instead take one game frame to do so
 - Add score, and let line clears and piece dropping add to it
