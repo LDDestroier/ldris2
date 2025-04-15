@@ -1,10 +1,11 @@
 # LDRIS version 2
-Modern multiplayer tetris for ComputerCraft. (Work in progress)
+Modern (to-be) multiplayer tetris for ComputerCraft. (Work in progress)
 
 ### Current features:
 - SRS rotation and wall-kicking
 - 7-bag randomization
 - Modern-feeling controls
+- Garbage attack support
 - Ghost piece
 - Piece holding
 - Sonic drop
@@ -13,9 +14,9 @@ Modern multiplayer tetris for ComputerCraft. (Work in progress)
 
 ### To-do:
 - Figure out why the game randomly starts to lag badly in CraftOS-PC
-- Refactor all code to look prettier
-- Refactor control functions
-- Add score, and let lineclears and piece dropping add to it
+- Refactor code to look prettier
+- Find out why the minos don't instantly move up when board is almost full, and instead take one game frame to do so
+- Add score, and let line clears and piece dropping add to it
 - Implement initial hold and initial rotation
 - Add an actual menu, and not the crap that LDRIS 1 had
 - Implement proper Multiplayer (aiming for modem-only for now)
