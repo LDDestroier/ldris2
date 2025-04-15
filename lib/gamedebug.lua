@@ -31,7 +31,7 @@ end
 
 local modem = peripheral.wrap("modem")
 if (not modem) and (ccemux) then
-	ccemux.attach("modem", "wireless_modem")
+	ccemux.attach("top", "wireless_modem")
 	modem = peripheral.wrap("modem")
 end
 
