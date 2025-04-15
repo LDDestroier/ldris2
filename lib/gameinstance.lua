@@ -698,8 +698,7 @@ function GameInstance:Resume(evt, doTick)
 			self:ControlTick(self.didControlTick)
 			self.state.controlTickCount = self.state.controlTickCount + 1
 			if not self.state.paused then
-				GameDebug.profile(" GameInstant:Tick() ft=", scr_y-3, function() return self:Tick(message) end)
-				--self:Tick(message)
+				self:Tick(message)
 				self.state.gameTickCount = self.state.gameTickCount + 1
 			end
 			self.didControlTick = false
@@ -724,7 +723,8 @@ function GameInstance:Resume(evt, doTick)
 
 		garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
 
-		self:Render(true)
+		--self:Render(true)
+		GameDebug.profile("Render", scr_y-3, function() self:Render(true) end)
 	end
 
 	return self.message
