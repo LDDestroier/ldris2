@@ -19,7 +19,7 @@ local _PRINT_DEBUG_INFO = false
 '---'         `---'                             `---'
 
 LDRIS 2 (Work in Progress)
-Last update: April 9th 2025
+Last update: April 15th 2025
 
 Current features:
 + Real SRS rotation and wall-kicking!
