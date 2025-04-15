@@ -29,7 +29,7 @@ function GameDebug.cospc_debuglog(header, text)
 end
 
 
-local modem = peripheral.wrap("modem")
+local modem = peripheral.find("modem")
 if (not modem) and (ccemux) then
 	ccemux.attach("top", "wireless_modem")
 	modem = peripheral.wrap("modem")
