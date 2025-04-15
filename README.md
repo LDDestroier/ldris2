@@ -2,7 +2,7 @@
 Modern (to-be) multiplayer tetris for ComputerCraft. (Work in progress)
 
 ### Current features:
-- SRS rotation and wall-kicking
+- SRS rotation and wall-kicking, plus 180-spins
 - 7-bag randomization
 - Modern-feeling controls
 - Garbage attack support
@@ -11,10 +11,11 @@ Modern (to-be) multiplayer tetris for ComputerCraft. (Work in progress)
 - Sonic drop
 - Configurable SDF, DAS, ARR, ARE, lock delay
 - Animated piece queue
+- Included sound effects (from Tetris TGM 3)
 
 ### To-do:
 - Fix garbage collector-related slowdown when played in CraftOS-PC
-- - (if related to string concatenation, then damn...)
+  - (if related to string concatenation, then damn...)
 - Refactor code to look prettier
 - Find out why the minos don't instantly move up when board is almost full, and instead take one game frame to do so
 - Add score, and let line clears and piece dropping add to it
