@@ -21,7 +21,7 @@ LDRIS 2 (Work in Progress)
 Last update: April 15th 2025
 
 Current features:
-+ Real SRS rotation and wall-kicking!
++ SRS wall kicks! 180-spins!
 + 7bag randomization!
 + Modern-feeling controls!
 + Garbage attack!
@@ -29,15 +29,20 @@ Current features:
 + Piece holding!
 + Sonic drop!
 + Configurable SDF, DAS, ARR, ARE, lock delay, etc.!
-+ Piece queue! It's even animated!
++ Animated piece queue!
++ Included sound effects!
 
 To-do:
-+ Figure out why game randomly lags out on CraftOS-PC
-+ Refactor all code to look prettier
-+ Add score, and let lineclears and piece dropping add to it
++ Fix garbage collector-related slowdown when played in CraftOS-PC
+    (if related to string concatenation, then damn...)
++ Refactor code to look prettier
++ Find out why the minos don't instantly move up when board is almost full, and instead take one game frame to do so
++ Add score, and let line clears and piece dropping add to it
 + Implement initial hold and initial rotation
-+ Add an actual menu, and not that shit LDRIS 1 had
-+ Implement proper Multiplayer (modem-only for now)
++ Add an actual menu, and not the crap that LDRIS 1 had
++ Implement proper Multiplayer (aiming for modem-only for now)
++ Implement arcade features (proper kiosk mode, krist integration)
++ Add touchscreen-friendly controls for CraftOS-PC Mobile
 + Cheese race mode
 + Add in-game menu for changing controls (some people can actually tolerate guideline)
 ]]
