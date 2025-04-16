@@ -41,7 +41,7 @@ function GameInstance:MakeRotatedMinoLookup(mino_table)
 	return output
 end
 
-function GameInstance:Initiate(mino_table)
+function GameInstance:Initiate(mino_table, randomseed)
 	self.state = {
 		gravity = gameConfig.startingGravity,
 		targetPlayer = 0,
@@ -55,6 +55,7 @@ function GameInstance:Initiate(mino_table)
 		queue = {},
 		queueMinos = {},
 		linesCleared = 0,
+		minosMade = 0,
 		random_bag = {},
 		gameTickCount = 0,
 		controlTickCount = 0,
@@ -67,6 +68,8 @@ function GameInstance:Initiate(mino_table)
 	}                        -- 1 = mini spin
 							 -- 2 = Z/S/J/L spin
 							 -- 3 = T spin
+
+	self.randomseed = randomseed or self.randomseed
 
 	if (mino_table or not self.mino_rotable) then
 		self.mino_rotable = self:MakeRotatedMinoLookup(mino_table or gameConfig.minos)
@@ -81,6 +84,8 @@ function GameInstance:Initiate(mino_table)
 		gameConfig.board_width,
 		gameConfig.board_height
 	)
+	self.state.board.overtopHeight = 3
+	self.state.board.visibleHeight = 20
 
 	-- queue of upcoming minos
 	self.state.queueBoard = Board:New(
@@ -115,6 +120,7 @@ function GameInstance:Initiate(mino_table)
 
 	-- populate the queue
 	for i = 1, self.clientConfig.queue_length + 1 do
+		self.state.minosMade = self.state.minosMade + 1
 		self.state.queue[i] = self:PseudoRandom(state)
 	end
 
@@ -191,11 +197,15 @@ end
 function GameInstance:CyclePiece()
 	local nextPiece = self.state.queue[1]
 	table.remove(self.state.queue, 1)
+	self.state.minosMade = self.state.minosMade + 1
 	self.state.queue[#self.state.queue + 1] = self:PseudoRandom(state)
 	return nextPiece
 end
 
 function GameInstance:PseudoRandom()
+
+	math.randomseed(self.state.minosMade, self.randomseed)
+
 	if gameConfig.randomBag == "random" then
 		return math.random(1, #gameConfig.minos)
 
@@ -252,7 +262,7 @@ function GameInstance:MakeDefaultMino()
 		nextPiece,
 		self.state.board,
 		math.floor(self.state.board.width / 2 - 1) + (gameConfig.minos[nextPiece].spawnOffsetX or 0),
-		math.floor(gameConfig.board_height_visible + 1) + (gameConfig.minos[nextPiece].spawnOffsetY or 0),
+		math.floor(gameConfig.board_height_visible - 1) + (gameConfig.minos[nextPiece].spawnOffsetY or 0),
 		self.state.mino
 	)
 end
@@ -302,7 +312,7 @@ function GameInstance:HandleLineClears()
 	-- get list of full lines
 	local clearedLines = { lookup = {} }
 	for y = 1, board.height do
-		if not board.contents[y]:find(board.blankColor) then
+		if not board.contents[y]:find(" ") then
 			clearedLines[#clearedLines + 1] = y
 			clearedLines.lookup[y] = true
 		end
@@ -319,7 +329,7 @@ function GameInstance:HandleLineClears()
 			end
 		end
 		for y = 1, #clearedLines do
-			newContents[y] = string.rep(board.blankColor, board.width)
+			newContents[y] = string.rep(" ", board.width)
 		end
 		self.state.board.contents = newContents
 	end
@@ -476,23 +486,28 @@ function GameInstance:Tick()
 					self:AnimateQueue()
 				end
 			end
+
+			if mino:CheckCollision(0, 0) then
+				self.state.topOut = true
+			end
+
 		end
 
-		if doMakeNewMino then
-			-- check for top-out due to obstructed mino upon entry
-			-- attempt to move mino at most 2 spaces upwards before considering it fully topped out
+		-- check for top-out due to obstructed mino upon entry
+		-- attempt to move mino at most 2 spaces upwards before considering it fully topped out
+		-- NOTE: unsure why, but this fucks up for some reason
+		--[[
+		if doCheckStuff then
 			self.state.topOut = true
 			for i = 0, 2 do
-				if mino:CheckCollision(0, 1) then
-					mino.y = mino.y - 1
-				else
+				if not mino:CheckCollision(0, -i) then
+					mino.y = mino.y - i
 					self.state.topOut = false
 					break
 				end
 			end
-
-			-- TODO: this is where I'd put initial rotation
 		end
+		--]]
 
 		-- calls the frame when a new mino is generated
 		-- if the hold attempt fails (say, you already held a piece), it wouldn't do to check for a top-out or line clears
@@ -534,7 +549,6 @@ function GameInstance:Tick()
 				self.state.spinLevel = 0
 			end
 		end
-
 	end
 
 end
@@ -656,17 +670,6 @@ function GameInstance:ControlTick(onlyFastActions)
 		_, _, kick_count = mino:RotateLookup(-1, true, self.mino_rotable)
 		if mino.spinID <= gameConfig.spin_mode then
 			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
-			--[[
-			if (
-				mino:CheckCollision(1, 0) and
-				mino:CheckCollision(-1, 0) and
-				mino:CheckCollision(0, -1)
-			) then
-				self.state.spinLevel = 3
-			else
-				self.state.spinLevel = 0
-			end
-			--]]
 		end
 		control.antiControlRepeat["rotate_ccw"] = true
 	end
@@ -674,17 +677,6 @@ function GameInstance:ControlTick(onlyFastActions)
 		_, _, kick_count = mino:RotateLookup(1, true, self.mino_rotable)
 		if mino.spinID <= gameConfig.spin_mode then
 			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
-			--[[
-			if (
-				mino:CheckCollision(1, 0) and
-				mino:CheckCollision(-1, 0) and
-				mino:CheckCollision(0, -1)
-			) then
-				self.state.spinLevel = 3
-			else
-				self.state.spinLevel = 0
-			end
-			--]]
 		end
 		control.antiControlRepeat["rotate_cw"] = true
 	end
@@ -749,7 +741,7 @@ function GameInstance:Resume(evt, doTick)
 		self:Render(true)
 		--GameDebug.profile("Render", scr_y-3, function() self:Render(true) end)
 		if true then
-			term.setCursorPos(self.state.board.x, self.board_ymod + self.height + 2)
+			term.setCursorPos(self.state.board.x, (self.state.board.y) * 2 + self.height)
 			term.setTextColor(colors.lightGray)
 			term.write("Lines: ")
 			term.setTextColor(colors.yellow)

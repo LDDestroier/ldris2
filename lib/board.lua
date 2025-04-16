@@ -19,9 +19,10 @@ function Board:New(x, y, width, height, blankColor)
     board.garbageColor = "8"
     board.visibleHeight = height and mathfloor(board.height / 2) or gameConfig.board_height_visible
     board.charHeight = math.ceil(board.visibleHeight * (2 / 3))
+    board.overtopHeight = 0
 
     for y = 1, board.height do
-        board.contents[y] = stringrep(board.blankColor, board.width)
+        board.contents[y] = stringrep(" ", board.width)
     end
 
     return board
@@ -41,11 +42,11 @@ function Board:IsSolid(x, y)
 	y = mathfloor(y)
 	if self.contents[y] then
 		if x >= 1 and x <= self.width then
-			return self.contents[y]:sub(x, x) ~= self.blankColor, self.contents[y]:sub(x, x)
+			return (self.contents[y]:sub(x, x) ~= " "), self.contents[y]:sub(x, x)
 		end
 	end
 
-	return true, self.blankColor
+	return true, " "
 end
 
 function Board:AddGarbage(amount)
@@ -61,7 +62,7 @@ function Board:AddGarbage(amount)
 
     -- populate 'amount' bottom rows with fucking bullshit
     for y = self.height, self.height - amount + 1, -1 do
-        self.contents[y] = stringrep(self.garbageColor, holeX - 1) .. self.blankColor .. stringrep(self.garbageColor, self.width - holeX)
+        self.contents[y] = stringrep(self.garbageColor, holeX - 1) .. " " .. stringrep(self.garbageColor, self.width - holeX)
         if math.random(1, 100) <= changePercent then
             holeX = math.random(1, self.width)
         end
@@ -72,7 +73,7 @@ function Board:CheckPerfectClear()
     -- checks only the bottom 2 rows, since is is impossible to have blocks floating above two empty rows
     -- ... i think
     for y = self.height - 1, self.height do
-        if self.contents[y] ~= self.blankColor:rep(self.width) then
+        if self.contents[y] ~= (" "):rep(self.width) then
             return false
         end
     end
@@ -81,10 +82,11 @@ function Board:CheckPerfectClear()
 end
 
 function Board:Clear(color)
-    color = color or self.blankColor
+    color = color or " "
     for y = 1, self.height do
         self.contents[y] = stringrep(color, self.width)
     end
+    return self
 end
 
 -- used for sending board data over the network
@@ -104,18 +106,23 @@ end
 function Board:Render(...)
     local charLine1 = stringrep("\131", self.width)
     local charLine2 = stringrep("\143", self.width)
-    local transparentLine = stringrep(self.transparentColor, self.width)
-    local blankLine = stringrep(self.blankColor, self.width)
-    local colorLine1, colorLine2, colorLine3
+    local transparentLine, blankLine = {}, {}
+    for x = 1, self.width do
+        transparentLine[x] = self.transparentColor
+        blankLine[x] = " "
+    end
+    local colorLine1, colorLine2, colorLine3 = {}, {}, {}
     local minoColor1, minoColor2, minoColor3
     local minos = { ... }
     local tY
     local is_solid, mino_color
 
-	tY = self.y
+	tY = self.y - math.ceil(self.overtopHeight * 0.666)
+	local topbound = (self.height - (self.visibleHeight + self.overtopHeight))
+    local visibound = topbound + self.overtopHeight
 
-	for y = 1 + (self.height - self.visibleHeight), self.height, 3 do
-		colorLine1, colorLine2, colorLine3 = "", "", ""
+	for y = 1 + topbound, self.height, 3 do
+		colorLine1, colorLine2, colorLine3 = {}, {}, {}
 
         for x = 1, self.width do
             minoColor1, minoColor2, minoColor3 = nil, nil, nil
@@ -140,25 +147,33 @@ function Board:Render(...)
                 end
             end
 
-            colorLine1 = colorLine1 .. (minoColor1 or ((self.contents[y + 0] and self.contents[y + 0]:sub(x, x)) or self.blankColor))
-            colorLine2 = colorLine2 .. (minoColor2 or ((self.contents[y + 1] and self.contents[y + 1]:sub(x, x)) or self.blankColor))
-            colorLine3 = colorLine3 .. (minoColor3 or ((self.contents[y + 2] and self.contents[y + 2]:sub(x, x)) or self.blankColor))
+            colorLine1[x] = (minoColor1 or ((self.contents[y]     and self.contents[y]    :sub(x, x)) or " "))
+            colorLine2[x] = (minoColor2 or ((self.contents[y + 1] and self.contents[y + 1]:sub(x, x)) or " "))
+            colorLine3[x] = (minoColor3 or ((self.contents[y + 2] and self.contents[y + 2]:sub(x, x)) or " "))
+
+            if colorLine1[x] == " " then colorLine1[x] = (y     > (visibound) and self.blankColor or self.transparentColor) end
+            if colorLine2[x] == " " then colorLine2[x] = (y + 1 > (visibound) and self.blankColor or self.transparentColor) end
+            if colorLine3[x] == " " then colorLine3[x] = (y + 2 > (visibound) and self.blankColor or self.transparentColor) end
+
+--            if colorLine1[x] == " " then colorLine1[x] = (y     >= (self.visibleHeight) and self.blankColor or self.blankColor) end
+--            if colorLine2[x] == " " then colorLine2[x] = (y + 1 >= (self.visibleHeight) and self.blankColor or self.blankColor) end
+--            if colorLine3[x] == " " then colorLine3[x] = (y + 2 >= (self.visibleHeight) and self.blankColor or self.blankColor) end
         end
 
-        if (y + 0) > self.height or (y + 0) <= (self.height - self.visibleHeight) then
+        if (y + 0) > self.height or (y + 0) <= topbound then
             colorLine1 = transparentLine
         end
-        if (y + 1) > self.height or (y + 1) <= (self.height - self.visibleHeight) then
+        if (y + 1) > self.height or (y + 1) <= topbound then
             colorLine2 = transparentLine
         end
-        if (y + 2) > self.height or (y + 2) <= (self.height - self.visibleHeight) then
+        if (y + 2) > self.height or (y + 2) <= topbound then
             colorLine3 = transparentLine
         end
 
         term.setCursorPos(self.x, self.y + tY)
-        term.blit(charLine2, colorLine1, colorLine2)
+        term.blit(charLine2, table.concat(colorLine1), table.concat(colorLine2))
         term.setCursorPos(self.x, self.y + tY + 1)
-        term.blit(charLine1, colorLine2, colorLine3)
+        term.blit(charLine1, table.concat(colorLine2), table.concat(colorLine3))
 
 		tY = tY + 2
     end

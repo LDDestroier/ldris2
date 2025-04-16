@@ -47,6 +47,8 @@ To-do:
 + Add in-game menu for changing controls (some people can actually tolerate guideline)
 ]]
 
+-- if my indenting is fucked, I blame zed's default settings'
+
 local scr_x, scr_y = term.getSize()
 
 local Board = require "lib.board"
@@ -67,6 +69,8 @@ if (not speaker) and periphemu then
 		speaker = peripheral.wrap("speaker")
 end
 
+-- note block pitches for playing bad sound effects
+-- index 1 is delay duration, the rest represent pitch
 local sound_timers = {}
 local sound_data = {
 		mino_Z = { 0.1, 15, 6, 9 },
@@ -113,10 +117,7 @@ local function write_debug_stuff(game)
 		term.write("M=" .. mino.movesLeft .. ", TtL=" .. tostring(mino.lockTimer):sub(1, 4) .. "      ")
 
 		term.setCursorPos(2, scr_y - 0)
-		term.write("POS=(" ..
-		mino.x ..
-		":" ..
-		tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
+		term.write("POS=(" .. mino.x .. ":" .. tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
 	end
 end
 
@@ -125,9 +126,9 @@ local function move_games(GAMES)
 	for i = 1, #GAMES do
 		GAMES[i]:Move(
 			(scr_x / 2) - ((#GAMES * game_size[1]) / 2) + (game_size[1] * (i - 1)),
-					(scr_y / 4) - ((game_size[2] - 5) / 2)
+			(scr_y / 4) - ((game_size[2] - 5) / 2)
 		)
-		end
+	end
 end
 
 local function main()
@@ -142,7 +143,7 @@ local function main()
 
 		local GAMES = {}
 		for i = 1, _AMOUNT_OF_GAMES do
-			table.insert(GAMES, GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate(gameConfig.minos))
+			table.insert(GAMES, GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate(gameConfig.minos, last_epoch))
 		end
 		local player_number = math.max(1, math.floor(#GAMES / 2))
 	
@@ -218,7 +219,7 @@ local function main()
 								-- restart game after topout
 								if message.gameover then
 										cospc_debuglog(i, "Game over!")
-										GAME:Initiate()
+										GAME:Initiate(nil, last_epoch)
 								end
 								
 								-- quit game
@@ -243,9 +244,9 @@ local function main()
 						end
 						
 						frame_time = os.epoch("utc") - last_epoch
-						if _PRINT_DEBUG_INFO then
+						if _PRINT_DEBUG_INFO or (frame_time > 200) then
 							term.setCursorPos(10, 1)
-							term.write("ft=" .. tostring(frame_time) .. "   ")
+							term.write("ft=" .. tostring(frame_time) .. "ms   ")
 						end
 				end
 				
@@ -260,6 +261,7 @@ cospc_debuglog(nil, "Opened LDRIS2.")
 
 
 local original_palette = {}
+local original_randomseed = {math.randomseed()}
 for i = 0, 15 do
 		original_palette[i + 1] = { term.getPaletteColor(2 ^ i) }
 end
@@ -271,6 +273,7 @@ local success, err_message = pcall(main)
 for i = 1, 16 do
 		term.setPaletteColor(2 ^ (i - 1), table.unpack(original_palette[i]))
 end
+math.randomseed(table.unpack(original_randomseed))
 
 if not success then
 		error(err_message)

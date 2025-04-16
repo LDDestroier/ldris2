@@ -45,7 +45,7 @@ function Mino:New(mino_table, minoID, board, xPos, yPos, oldeMino)
 	mino.board = board
 	mino.rotation = 0
 	mino.resting = false
-	mino.lockTimer = 0
+	mino.lockTimer = gameConfig.lock_delay
 	mino.movesLeft = gameConfig.lock_move_limit
 	mino.yHighest = mino.y
 	mino.doWriteColor = false
@@ -85,16 +85,17 @@ function Mino:CheckCollision(xMod, yMod, doNotCountBorder, round)
 
 			if self:DoesSpotExist(cx, cy) then
 				if (
-					self.board.contents[cy]:sub(cx, cx) ~= self.board.blankColor and
+					self.board:IsSolid(cx, cy) and
 					self:CheckSolid(x, y)
 				) then
+					return true
+				end
+
+			elseif (not doNotCountBorder) and self:CheckSolid(x, y) then
 				return true
 			end
-		elseif (not doNotCountBorder) and self:CheckSolid(x, y) then
-			return true
 		end
 	end
-end
 	return false
 end
 
