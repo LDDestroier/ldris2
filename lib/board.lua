@@ -114,19 +114,18 @@ function Board:Render(...)
     local colorLine1, colorLine2, colorLine3 = {}, {}, {}
     local minoColor1, minoColor2, minoColor3
     local minos = { ... }
-    local tY
-    local is_solid, mino_color
+    local is_solid, mino_color, mino
 
-	tY = self.y - math.ceil(self.overtopHeight * 0.666)
+	local tY = self.y - math.ceil(self.overtopHeight * 0.666)
 	local topbound = (self.height - (self.visibleHeight + self.overtopHeight))
-    local visibound = topbound + self.overtopHeight
+	local visibound = topbound + self.overtopHeight
 
 	for y = 1 + topbound, self.height, 3 do
-		colorLine1, colorLine2, colorLine3 = {}, {}, {}
-
+--		colorLine1, colorLine2, colorLine3 = {}, {}, {}
         for x = 1, self.width do
             minoColor1, minoColor2, minoColor3 = nil, nil, nil
-            for i, mino in ipairs(minos) do
+            for i = #minos, 1, -1 do
+				mino = minos[i]
                 if mino.visible then
 
                     is_solid, mino_color = mino:CheckSolid(x, y + 0, true)
@@ -145,6 +144,10 @@ function Board:Render(...)
                     end
 
                 end
+				
+				if minoColor1 or minoColor2 or minoColor3 then
+					break
+				end
             end
 
             colorLine1[x] = (minoColor1 or ((self.contents[y]     and self.contents[y]    :sub(x, x)) or " "))
@@ -155,9 +158,6 @@ function Board:Render(...)
             if colorLine2[x] == " " then colorLine2[x] = (y + 1 > (visibound) and self.blankColor or self.transparentColor) end
             if colorLine3[x] == " " then colorLine3[x] = (y + 2 > (visibound) and self.blankColor or self.transparentColor) end
 
---            if colorLine1[x] == " " then colorLine1[x] = (y     >= (self.visibleHeight) and self.blankColor or self.blankColor) end
---            if colorLine2[x] == " " then colorLine2[x] = (y + 1 >= (self.visibleHeight) and self.blankColor or self.blankColor) end
---            if colorLine3[x] == " " then colorLine3[x] = (y + 2 >= (self.visibleHeight) and self.blankColor or self.blankColor) end
         end
 
         if (y + 0) > self.height or (y + 0) <= topbound then
