@@ -284,25 +284,36 @@ local function titleScreen()
 
 	local mainmenu = Menu:New(2, 2)
 	mainmenu:SetTitle("LDRIS 2", 1)
-	mainmenu:AddOption("Marathon", 1, 3)
-	mainmenu:AddOption("Multiplayer (Modem)", 1, 4)
-	mainmenu:AddOption("Modes", 1, 5)
-	mainmenu:AddOption("Options", 1, 6)
-	mainmenu:AddOption("Quit", 1, 8)
+	mainmenu:AddOption("Marathon", "marathon", 1, 3)
+	mainmenu:AddOption("Multiplayer (Modem)", "mp_modem", 1, 4)
+	mainmenu:AddOption("Modes", "mode_menu", 1, 5)
+	mainmenu:AddOption("Options", "options_menu", 1, 6)
+	mainmenu:AddOption("Quit", "quit_game", 1, 8)
 	mainmenu.selected = 1
 	mainmenu.cursor = {"O ", "@ "}
 	mainmenu.cursor_blink = 0.05
 
-	local modemenu = Menu:New(10, 5)
-	modemenu:SetTitle("")
-	modemenu:AddOption("Cheese Race", 1, 1)	-- infinite garbage of a particular height
-	modemenu:AddOption("40-line Sprint", 1, 2)
-	modemenu:AddOption("Some other shit idk", 1, 3)
+	local modemenu = Menu:New(24, 2)
+	modemenu:SetTitle("", 1)
+	modemenu:AddOption("Cheese Race", "cheese_race", 1, 3)	-- infinite garbage of a particular height
+	modemenu:AddOption("40-line Sprint", "sprint", 1, 4)
+	modemenu:AddOption("Some other shit idk", "othershit", 1, 5)
+	modemenu:AddOption("Return", "main_menu", 1, 7)
+	modemenu.cursor = {"O ", "@ "}
+	modemenu.cursor_blink = 0.05
 	
 	local evt
-	local tickTimer = os.startTimer(0.05)
+	local tickTimer = os.startTimer(mainmenu.cursor_blink)
+	local doRenderMenu = true
+	local sel
+	
+	local MENU = mainmenu
+	
 	while true do
-		mainmenu:Render()
+		if doRenderMenu then
+			MENU:Render()
+			doRenderMenu = false
+		end
 		for k, v in pairs(control.keysDown) do
 			control.keysDown[k] = 1 + v
 		end
@@ -310,34 +321,62 @@ local function titleScreen()
 		control:Resume(evt)
 
 		if evt[1] == "timer" and evt[2] == tickTimer then
-			tickTimer = os.startTimer(0.05)
+			tickTimer = os.startTimer(MENU.cursor_blink)
+			MENU:CycleCursor()
+			doRenderMenu = true
 		end
 
 		if control:CheckControl("menu_up") then
-			mainmenu:MoveSelect(-1)
+			MENU:MoveSelect(-1)
+			doRenderMenu = true
 
 		elseif control:CheckControl("menu_down") then
-			mainmenu:MoveSelect(1)
+			MENU:MoveSelect(1)
+			doRenderMenu = true
 
 		elseif control:CheckControl("menu_select") then
-			if mainmenu.selected == 1 then
-				startGame()
+			sel = MENU:GetSelected()
+			do
+				if sel == "marathon" then
+					startGame()
+					
+				elseif sel == "mp_modem" then
+					WIPscreen("Multiplayer will be implemented later!")
 
-			elseif mainmenu.selected == 2 then
-				WIPscreen("Multiplayer will be implemented later!")
+				elseif sel == "mode_menu" then
+					MENU:Render(true)
+					MENU = modemenu
+					MENU.selected = 1
+					
+				elseif sel == "main_menu" then
+					MENU = mainmenu
+					term.clear()
 
-			elseif mainmenu.selected == 3 then
-				WIPscreen("Other modes will be added later!")
+				elseif sel == "options_menu" then
+					WIPscreen("Options will be added later! Really!")
+					
+				elseif sel == "quit_game" then
+					return
+				end
+			end
+			
+			do
+				if sel == "cheese_race" then
+					WIPscreen("Cheese race will be added later!")
+					mainmenu:Render(true)
 
-			elseif mainmenu.selected == 4 then
-				WIPscreen("Options will be added later! Really")
+				elseif sel == "sprint" then
+					WIPscreen("Sprint mode will be added later!")
+					mainmenu:Render(true)
 
-			elseif mainmenu.selected == 5 then
-				return
+				elseif sel == "othershit" then
+					WIPscreen("Other modes will be added later!")
+					mainmenu:Render(true)
+				end
 			end
 
-			term.clear()
-			tickTimer = os.startTimer(0.05)
+			tickTimer = os.startTimer(MENU.cursor_blink)
+			doRenderMenu = true
 
 		elseif control:CheckControl("quit") then
 			return

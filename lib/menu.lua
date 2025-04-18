@@ -8,10 +8,11 @@ function Menu:New(x, y)
 	menu.x = x or 1
 	menu.y = y or 1
 	menu.selected = 1
-	menu.title = {"Menu", 1}
+	menu.title = {"", 1}
 	menu.options = {}
 	menu.cursor = {">"}
 	menu.cursor_blink = 0.5
+	menu.cursor_index = 1
 	menu.color_title = colors.yellow
 	menu.color_selected = colors.yellow
 	menu.color_unselected = colors.lightGray
@@ -31,17 +32,27 @@ local function cwrite(text, y, color)
 	term.setTextColor(color)
 end
 
-function Menu:AddOption(name, rx, ry)
+function Menu:CycleCursor()
+	self.cursor_index = (self.cursor_index % #self.cursor) + 1
+end
+
+function Menu:AddOption(name, sID, rx, ry)
+	assert(type(sID) == "string", "menu options must have string ID")
 	name = name or ""
 	rx = rx or 1
 	ry = ry or 1
 
-	table.insert(self.options, {name, rx, ry})
+	table.insert(self.options, {name, rx, ry, sID})
+end
+
+function Menu:GetSelected()
+	return self.options[self.selected][4]
 end
 
 function Menu:SetTitle(title, rx)
 	assert(type(title) == "string", "asshole")
-	self.title = {title, rx}
+	self.title[1] = title
+	self.title[2] = rx or self.title[2]
 end
 
 function Menu:MoveSelect(delta)
@@ -51,7 +62,7 @@ function Menu:MoveSelect(delta)
 	end
 end
 
-function Menu:Render()
+function Menu:Render(show_no_selected)
 	local cursor_index = (math.floor(os.clock() / self.cursor_blink) % #self.cursor) + 1
 --	term.setCursorPos(self.x + self.title[2] - 1, self.y + self.title[3] - 1)
 --	term.setTextColor(self.color_title)
@@ -60,16 +71,18 @@ function Menu:Render()
 
 	term.setTextColor(self.color_unselected)
 	for i, option in ipairs(self.options) do
-		if i ~= self.selected then
+		if show_no_selected or (i ~= self.selected) then
 			term.setCursorPos(self.x + option[2] - 1, self.y + option[3] - 1)
 			term.write(option[1] .. "  ")
 		end
 	end
 
-	term.setTextColor(self.color_selected)
-	term.setCursorPos(self.x + self.options[self.selected][2] - 1, self.y + self.options[self.selected][3] - 1)
-	term.write(self.cursor[cursor_index])
-	term.write(self.options[self.selected][1] .. "  ")
+	if not show_no_selected then
+		term.setTextColor(self.color_selected)
+		term.setCursorPos(self.x + self.options[self.selected][2] - 1, self.y + self.options[self.selected][3] - 1)
+		term.write(self.cursor[cursor_index])
+		term.write(self.options[self.selected][1] .. "  ")
+	end
 end
 
 return Menu
