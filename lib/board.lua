@@ -124,7 +124,7 @@ function Board:Render(...)
 --		colorLine1, colorLine2, colorLine3 = {}, {}, {}
         for x = 1, self.width do
             minoColor1, minoColor2, minoColor3 = nil, nil, nil
-            for i = #minos, 1, -1 do
+            for i = 1, #minos do
 				mino = minos[i]
                 if mino.visible then
 
@@ -144,13 +144,9 @@ function Board:Render(...)
                     end
 
                 end
-				
-				if minoColor1 or minoColor2 or minoColor3 then
-					break
-				end
             end
 
-            colorLine1[x] = (minoColor1 or ((self.contents[y]     and self.contents[y]    :sub(x, x)) or " "))
+            colorLine1[x] = (minoColor1 or ((self.contents[y    ] and self.contents[y    ]:sub(x, x)) or " "))
             colorLine2[x] = (minoColor2 or ((self.contents[y + 1] and self.contents[y + 1]:sub(x, x)) or " "))
             colorLine3[x] = (minoColor3 or ((self.contents[y + 2] and self.contents[y + 2]:sub(x, x)) or " "))
 

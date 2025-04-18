@@ -1,4 +1,4 @@
-local _AMOUNT_OF_GAMES = 2
+local _AMOUNT_OF_GAMES = 1
 local _PRINT_DEBUG_INFO = false
 --[[
    ,--,
@@ -18,32 +18,30 @@ local _PRINT_DEBUG_INFO = false
           '---'        `---'                        `---'
 
 LDRIS 2 (Work in Progress)
-Last update: April 15th 2025
+Last update: April 18th 2025
 
 Current features:
 + SRS wall kicks! 180-spins!
 + 7bag randomization!
 + Modern-feeling controls!
 + Garbage attack!
-+ Ghost piece!
-+ Piece holding!
-+ Sonic drop!
++ Ghost piece, piece holding, sonic drop!
 + Configurable SDF, DAS, ARR, ARE, lock delay, etc.!
 + Animated piece queue!
 + Included sound effects!
 
 To-do:
-+ Fix garbage collector-related slowdown when played in CraftOS-PC
-    (if related to string concatenation, then damn...)
++ Implement DFPWM audio so that real sound effects work in CC:Tweaked
++ Try to further mitigate any garbage collector-related slowdown in CraftOS-PC
 + Refactor code to look prettier
-+ Find out why the minos don't instantly move up when board is almost full, and instead take one game frame to do so
 + Add score, and let line clears and piece dropping add to it
 + Implement initial hold and initial rotation
-+ Add an actual menu, and not the crap that LDRIS 1 had
++ Improve menu drastically
 + Implement proper Multiplayer (aiming for modem-only for now)
 + Implement arcade features (proper kiosk mode, krist integration)
 + Add touchscreen-friendly controls for CraftOS-PC Mobile
 + Cheese race mode
++ 40-line Sprint mode
 + Add in-game menu for changing controls (some people can actually tolerate guideline)
 ]]
 
@@ -56,10 +54,13 @@ local Mino = require "lib.mino"
 local GameInstance = require "lib.gameinstance"
 local Control = require "lib.control"
 local GameDebug = require "lib.gamedebug"
+local Menu = require "lib.menu"
 local cospc_debuglog = GameDebug.cospc_debuglog
 local clientConfig = require "config.clientconfig" -- client config can be changed however you please
 local gameConfig = require "config.gameconfig"     -- ideally, only clients with IDENTICAL game configs should face one another
 gameConfig.kickTables = require "lib.kicktables"
+
+--local dfpwm = require "cc.audio.dfpwm"
 
 local resume_count = 0
 
@@ -102,7 +103,7 @@ local function queueSound(name)
 				end
 
 		elseif speaker then
-				speaker.playLocalMusic(fs.combine(shell.dir(), "sound/" .. name .. ".ogg"))
+				speaker.playLocalMusic(fs.combine(shell.dir(), "sound/" .. name .. ".ogg"), 0.15)
 		end
 end
 
@@ -110,11 +111,11 @@ local function write_debug_stuff(game)
 	if game.control.native_control and _PRINT_DEBUG_INFO then
 		local mino = game.state.mino
 		
-		term.setCursorPos(14, scr_y - 2)
+		term.setCursorPos(18, scr_y - 1)
 		term.write("Combo: " .. game.state.combo .. "      ")
 
 		term.setCursorPos(2, scr_y - 1)
-		term.write("M=" .. mino.movesLeft .. ", TtL=" .. tostring(mino.lockTimer):sub(1, 4) .. "      ")
+		term.write("M=" .. mino.movesLeft .. ", TtL=" .. tostring(mino.lockTimer):sub(1, 4) .. "  ")
 
 		term.setCursorPos(2, scr_y - 0)
 		term.write("POS=(" .. mino.x .. ":" .. tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
@@ -126,14 +127,37 @@ local function move_games(GAMES)
 	for i = 1, #GAMES do
 		GAMES[i]:Move(
 			(scr_x / 2) - ((#GAMES * game_size[1]) / 2) + (game_size[1] * (i - 1)),
-			(scr_y / 4) - ((game_size[2] - 5) / 2)
+			(scr_y / 4) - ((game_size[2] - 5) / 2) + 1
 		)
 	end
 end
 
-local function main()
+local function cwrite(text, y, color)
+	local cx, cy = term.getCursorPos()
+	local sx, sy = term.getSize()
+	local og_color = term.getTextColor()
+	if color then
+		term.setTextColor(color)
+	end
+	term.setCursorPos(sx / 2 - #text / 2, y or (sy / 2))
+	term.write(text)
+	term.setTextColor(color)
+end
+
+local function WIPscreen(message)
+	term.clear()
+	cwrite(message, 3, colors.white)
+	sleep(0.25)
+	cwrite("Press any key to continue", 6, colors.lightGray)
+	os.pullEvent("key")
+	sleep(0.1)
+	term.clear()
+end
+
+local function startGame()
 
 		cospc_debuglog(2, "Starting game.")
+		term.clear()
 
 		local tickTimer = os.startTimer(gameConfig.tickDelay)
 		local message, doTick, doResume
@@ -164,9 +188,9 @@ local function main()
 					term.setCursorPos(1, 1)
 					term.write("t=" .. tostring(resume_count) .. "  ")
 
-					term.setCursorPos(17, 1)
+					term.setCursorPos(20, 1)
 					term.write("evt=" .. tostring(evt[1]) .. "   ")
-					term.setCursorPos(28, 1)
+					term.setCursorPos(32, 1)
 					term.write(tostring(evt[2]) .. "                    ")
 					
 					write_debug_stuff(GAMES[player_number])
@@ -246,12 +270,79 @@ local function main()
 						frame_time = os.epoch("utc") - last_epoch
 						if _PRINT_DEBUG_INFO or (frame_time > 200) then
 							term.setCursorPos(10, 1)
-							term.write("ft=" .. tostring(frame_time) .. "ms   ")
+							term.write("ft=" .. tostring(frame_time) .. "ms  ")
 						end
 				end
 				
 				GameDebug.broadcast(GAMES)
 		end
+end
+
+local function titleScreen()
+	term.clear()
+	local control = Control:New(clientConfig, true)
+
+	local mainmenu = Menu:New(2, 2)
+	mainmenu:SetTitle("LDRIS 2", 1)
+	mainmenu:AddOption("Marathon", 1, 3)
+	mainmenu:AddOption("Multiplayer (Modem)", 1, 4)
+	mainmenu:AddOption("Modes", 1, 5)
+	mainmenu:AddOption("Options", 1, 6)
+	mainmenu:AddOption("Quit", 1, 8)
+	mainmenu.selected = 1
+	mainmenu.cursor = {"O ", "@ "}
+	mainmenu.cursor_blink = 0.05
+
+	local modemenu = Menu:New(10, 5)
+	modemenu:SetTitle("")
+	modemenu:AddOption("Cheese Race", 1, 1)	-- infinite garbage of a particular height
+	modemenu:AddOption("40-line Sprint", 1, 2)
+	modemenu:AddOption("Some other shit idk", 1, 3)
+	
+	local evt
+	local tickTimer = os.startTimer(0.05)
+	while true do
+		mainmenu:Render()
+		for k, v in pairs(control.keysDown) do
+			control.keysDown[k] = 1 + v
+		end
+		evt = {os.pullEvent()}
+		control:Resume(evt)
+
+		if evt[1] == "timer" and evt[2] == tickTimer then
+			tickTimer = os.startTimer(0.05)
+		end
+
+		if control:CheckControl("menu_up") then
+			mainmenu:MoveSelect(-1)
+
+		elseif control:CheckControl("menu_down") then
+			mainmenu:MoveSelect(1)
+
+		elseif control:CheckControl("menu_select") then
+			if mainmenu.selected == 1 then
+				startGame()
+
+			elseif mainmenu.selected == 2 then
+				WIPscreen("Multiplayer will be implemented later!")
+
+			elseif mainmenu.selected == 3 then
+				WIPscreen("Other modes will be added later!")
+
+			elseif mainmenu.selected == 4 then
+				WIPscreen("Options will be added later! Really")
+
+			elseif mainmenu.selected == 5 then
+				return
+			end
+
+			term.clear()
+			tickTimer = os.startTimer(0.05)
+
+		elseif control:CheckControl("quit") then
+			return
+		end
+	end
 end
 
 term.clear()
@@ -268,7 +359,7 @@ end
 term.setPaletteColor(colors.gray, 0.15, 0.15, 0.15)
 term.setPaletteColor(colors.brown, 0.25, 0.25, 0.25)
 
-local success, err_message = pcall(main)
+local success, err_message = pcall(titleScreen)
 
 for i = 1, 16 do
 		term.setPaletteColor(2 ^ (i - 1), table.unpack(original_palette[i]))

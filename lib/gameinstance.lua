@@ -695,6 +695,8 @@ function GameInstance:Resume(evt, doTick)
 	self.message = {} -- sends back to main
 	local doRender = false
 
+	self.control:Resume(evt)
+
 	if evt[1] == "key" and not evt[3] then
 		self.control.keysDown[evt[2]] = 1
 		self.didControlTick = self:ControlTick(false)

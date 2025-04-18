@@ -20,6 +20,17 @@ function ControlAPI:Clear()
 	self.controlsDown = {}
 end
 
+function ControlAPI:Resume(evt)
+	if evt[1] == "key" and not evt[3] then
+		self.keysDown[evt[2]] = 1
+
+	elseif evt[1] == "key_up" then
+		self.keysDown[evt[2]] = nil
+	end
+
+	return evt
+end
+
 function ControlAPI:CheckControl(controlName, repeatTime, repeatDelay)
 	repeatDelay = repeatDelay or 1
 

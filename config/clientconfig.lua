@@ -12,6 +12,13 @@ return {
 		pause = keys.p,
 		restart = keys.r,
 		open_chat = keys.t,
+
+		menu_up = keys.up,
+		menu_down = keys.down,
+		menu_left = keys.left,
+		menu_right = keys.right,
+		menu_select = keys.enter,
+		menu_cancel = keys.backspace,
 		quit = keys.q,
 	},
 	-- (SDF) the factor in which soft dropping effects the gravity
