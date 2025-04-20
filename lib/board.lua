@@ -102,6 +102,10 @@ function Board:Serialize(doIncludeInit)
     })
 end
 
+function Board:SerializeContents()
+	return table.concat(self.contents)
+end
+
 -- takes list of minos that it will render atop the board
 function Board:Render(...)
     local charLine1 = stringrep("\131", self.width)

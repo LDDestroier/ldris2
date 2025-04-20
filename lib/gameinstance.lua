@@ -4,9 +4,17 @@
 local Mino = require "lib.mino"
 local Board = require "lib.board"
 local gameConfig = require "config.gameconfig"
-
 local GameDebug = require "lib.gamedebug"
 local cospc_debuglog = GameDebug.cospc_debuglog
+
+local modem = peripheral.find("modem")
+if (not modem) and (ccemux) then
+	ccemux.attach("top", "wireless_modem")
+	modem = peripheral.wrap("top")
+end
+if modem then
+	modem.open(100)
+end
 
 local GameInstance = {}
 
@@ -26,6 +34,77 @@ function GameInstance:New(control, board_xmod, board_ymod, clientConfig)
 	return game
 end
 
+local nm_actionlookup = {
+	mino_setpos = 1,
+	mino_lock = 2,
+	board_update = 3,
+	send_garbage = 4,
+}
+
+function GameInstance:SerializeNetworkMoment(action, param1, param2, param3, param4)
+	local output = nm_actionlookup[action] or " "
+	if action == "mino_setpos" or action == "mino_lock" then
+		-- param1, param 2 = mino x, y
+		-- param3 = mino type
+		-- param4 = mino rotation
+		output = table.concat({
+			output,
+			string.char((param1 + 127) % 256),
+			string.char((param2 + 127) % 256),
+			string.char(param3),
+			string.char(param4)
+		})
+
+	elseif action == "board_update" then
+		output = output .. self.state.board:SerializeContents()
+	
+	elseif action == "send_garbage" then
+		output = output .. string.char(param1)
+	end
+
+	return "ldris2" .. output
+end
+
+function GameInstance:ParseNetworkMoment(input)
+	local moment = {}
+	-- incredibly basic input validation
+	-- this WILL be replaced later with something that won't explode if you feed a wrong value
+	if input:sub(1, 6) == "ldris2" then
+		input = input:sub(7)
+	else
+		return
+	end
+
+	if input:sub(1, 1) == "\001" then -- mino_setpos
+		moment.action = "mino_setpos"
+		moment.x = string.byte(input:sub(2, 2)) - 127
+		moment.y = string.byte(input:sub(3, 3)) - 127
+		moment.minoID = string.byte(input:sub(4, 4))
+		moment.rotation = string.byte(input:sub(5, 5))
+	
+	elseif input:sub(1, 1) == "\002" then -- mino_lock
+		moment.action = "mino_lock"
+		moment.x = string.byte(input:sub(2, 2)) - 127
+		moment.y = string.byte(input:sub(3, 3)) - 127
+		moment.minoID = string.byte(input:sub(4, 4))
+		moment.rotation = string.byte(input:sub(5, 5))
+
+	elseif input:sub(1, 1) == "\003" then -- board_update
+		moment.action = "board_update"
+		moment.contents = {}
+		for i = 1, #input - 1, self.state.board.width do
+			moment.contents[#moment.contents + 1] = input:sub(i + 1, i + 11)
+		end
+
+	elseif input:sub(1, 1) == "\004" then -- send_garbage
+		moment.action = "send_garbage"
+		moment.garbage = string.byte(input:sub(2, 2))
+	end
+
+	return moment
+end
+
+
 -- creates a lookup table of the rotated states of every mino
 function GameInstance:MakeRotatedMinoLookup(mino_table)
 	local output = {}
@@ -42,6 +121,7 @@ function GameInstance:MakeRotatedMinoLookup(mino_table)
 end
 
 function GameInstance:Initiate(mino_table, randomseed)
+	self.networked = false
 	self.state = {
 		gravity = gameConfig.startingGravity,
 		targetPlayer = 0,
@@ -695,39 +775,69 @@ function GameInstance:Resume(evt, doTick)
 	self.message = {} -- sends back to main
 	local doRender = false
 
-	self.control:Resume(evt)
+	local moment -- used for multiplayer
 
-	if evt[1] == "key" and not evt[3] then
-		self.control.keysDown[evt[2]] = 1
-		self.didControlTick = self:ControlTick(false)
-		self.state.controlTickCount = self.state.controlTickCount + 1
-		doRender = true
+	if not self.networked then
 
-	elseif evt[1] == "key_up" then
-		self.control.keysDown[evt[2]] = nil
-	end
+		self.control:Resume(evt)
 
-	if evt[1] == "timer" then
-		if doTick then
-			for k, v in pairs(self.control.keysDown) do
-				self.control.keysDown[k] = 1 + v
-			end
-			self:ControlTick(self.didControlTick)
+		if evt[1] == "key" and not evt[3] then
+			self.control.keysDown[evt[2]] = 1
+			self.didControlTick = self:ControlTick(false)
 			self.state.controlTickCount = self.state.controlTickCount + 1
-			if not self.state.paused then
-				self:Tick(message)
-				self.state.gameTickCount = self.state.gameTickCount + 1
-			end
-			self.didControlTick = false
-			self.control.antiControlRepeat = {}
-
 			doRender = true
-		end
-	end
 
-	if self.state.topOut then
-		-- this will have a more elaborate game over sequence later
-		self.message.gameover = true
+		elseif evt[1] == "key_up" then
+			self.control.keysDown[evt[2]] = nil
+		end
+
+		if evt[1] == "timer" then
+			if doTick then
+				for k, v in pairs(self.control.keysDown) do
+					self.control.keysDown[k] = 1 + v
+				end
+				self:ControlTick(self.didControlTick)
+				self.state.controlTickCount = self.state.controlTickCount + 1
+				if not self.state.paused then
+					self:Tick(message)
+					self.state.gameTickCount = self.state.gameTickCount + 1
+				end
+				self.didControlTick = false
+				self.control.antiControlRepeat = {}
+
+				doRender = true
+			end
+		end
+
+		if evt[1] == "network_moment" then
+			moment = self:ParseNetworkMoment(evt[2])
+
+			if moment.action == "mino_setpos" then
+				mino.x = moment.x
+				mino.y = moment.y
+				doRender = true
+
+			elseif moment.action == "mino_lock" then
+				mino.x = moment.x
+				mino.y = moment.y
+				mino.lock_timer = 0
+				doRender = true
+
+			elseif moment.action == "board_update" then
+				board.contents = moment.contents
+				doRender = true
+
+			elseif moment.action == "send_garbage" then
+				self.state.incomingGarbage = moment.garbage
+				doRender = true
+
+			end
+		end
+
+		if self.state.topOut then
+			-- this will have a more elaborate game over sequence later
+			self.message.gameover = true
+		end
 	end
 
 	if doRender then
@@ -749,6 +859,11 @@ function GameInstance:Resume(evt, doTick)
 			term.setTextColor(colors.yellow)
 			term.write(self.state.linesCleared)
 		end
+	end
+
+	if (not self.networked) and modem then
+		modem.transmit(100, 100, self:SerializeNetworkMoment("mino_setpos", mino.x, mino.y, mino.minoID, mino.rotation))
+		modem.transmit(100, 100, self:SerializeNetworkMoment("board_update", self.state.board.contents))
 	end
 
 	return self.message
