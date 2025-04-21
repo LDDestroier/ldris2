@@ -34,10 +34,10 @@ if (not modem) and (ccemux) then
 	ccemux.attach("top", "wireless_modem")
 	modem = peripheral.wrap("top")
 end
-modem.open(100)
 
 function GameDebug.broadcast(message)
 	if modem then
+		modem.open(100)
 		modem.transmit(100, 100, message)
 	end
 end
