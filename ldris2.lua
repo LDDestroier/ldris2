@@ -61,6 +61,14 @@ local gameConfig = require "config.gameconfig"     -- ideally, only clients with
 gameConfig.kickTables = require "lib.kicktables"
 
 local modem = peripheral.find("modem")
+if (not modem) and ccemux then
+	ccemux.attach("top", "wireless_modem")
+	modem = peripheral.wrap("top")
+end
+
+if modem then
+	modem.open(100)
+end
 
 --local dfpwm = require "cc.audio.dfpwm"
 
@@ -189,6 +197,15 @@ local function startGame()
 		doResume = true
 		evt = { os.pullEvent() }
 
+		if evt[1] == "modem_message" then
+			error("ass")
+			if type(evt[5]) == "string" then
+				if evt[5]:sub(1, 6) == "ldris2" then
+					evt = {"network_moment", evt[5]}
+				end
+			end
+		end
+
 		if _PRINT_DEBUG_INFO then
 			term.setCursorPos(1, 1)
 			term.write("t=" .. tostring(resume_count) .. "  ")
@@ -240,19 +257,11 @@ local function startGame()
 			doResume = false
 		end
 
-		if evt[1] == "modem_message" then
-			if type(evt[5]) == "string" then
-				if evt[5]:sub(1, 6) == "ldris2" then
-					evt = {"network_moment", evt[5]}
-				end
-			end
-		end
-
 		-- run games
 		if doResume then -- do not resume on key repeat events!
 			resume_count = resume_count + 1
 			for i, GAME in ipairs(GAMES) do
---				message = GameDebug.profile("Game " .. i, i + 1, function() return (GAME:Resume(evt, doTick) or {}) end)
+				--				message = GameDebug.profile("Game " .. i, i + 1, function() return (GAME:Resume(evt, doTick) or {}) end)
 				message = GAME:Resume(evt, doTick) or {}
 
 				-- restart game after topout
@@ -278,6 +287,13 @@ local function startGame()
 						if _i ~= i then
 							_GAME:ReceiveGarbage(message.attack)
 						end
+					end
+				end
+
+				-- send network packets
+				if message.packet and modem then
+					for ii, packet in ipairs(message.packet) do
+						modem.transmit(100, 100, packet)
 					end
 				end
 			end
