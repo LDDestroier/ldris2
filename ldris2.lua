@@ -198,7 +198,6 @@ local function startGame()
 		evt = { os.pullEvent() }
 
 		if evt[1] == "modem_message" then
-			error("ass")
 			if type(evt[5]) == "string" then
 				if evt[5]:sub(1, 6) == "ldris2" then
 					evt = {"network_moment", evt[5]}
@@ -261,7 +260,7 @@ local function startGame()
 		if doResume then -- do not resume on key repeat events!
 			resume_count = resume_count + 1
 			for i, GAME in ipairs(GAMES) do
-				--				message = GameDebug.profile("Game " .. i, i + 1, function() return (GAME:Resume(evt, doTick) or {}) end)
+--				message = GameDebug.profile("Game " .. i, i + 1, function() return (GAME:Resume(evt, doTick) or {}) end)
 				message = GAME:Resume(evt, doTick) or {}
 
 				-- restart game after topout
@@ -284,9 +283,7 @@ local function startGame()
 				-- deal garbage attacks to other game instances
 				if message.attack then
 					for _i, _GAME in ipairs(GAMES) do
-						if _i ~= i then
-							_GAME:ReceiveGarbage(message.attack)
-						end
+						if _i ~= i then _GAME:ReceiveGarbage(message.attack) end
 					end
 				end
 
@@ -347,6 +344,7 @@ local function titleScreen()
 			control.keysDown[k] = 1 + v
 		end
 		evt = {os.pullEvent()}
+
 		control:Resume(evt)
 
 		if evt[1] == "timer" and evt[2] == tickTimer then

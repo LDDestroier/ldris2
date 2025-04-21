@@ -245,6 +245,17 @@ function Mino:RotateLookup(direction, expendLockMove, mino_rotable)
 	end
 end
 
+-- rotates via lookup table without considering wall kicks or position
+-- this is used in network mode where the position and rotation of a mino is already "validated"
+-- direction is absolute, not relative
+function Mino:ForceRotateLookup(abs_direction, mino_rotable)
+	self.shape = mino_rotable[self.minoID][1 + (abs_direction % 4)]
+	if (self.rotation - abs_direction) % 2 == 1 then
+		self.width, self.height = self.height, self.width
+	end
+	self.rotation = abs_direction
+end
+
 -- if doSlam == true, moves as far as it can before terminating
 function Mino:Move(x, y, doSlam, expendLockMove)
 	local didSlam
