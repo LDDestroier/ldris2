@@ -18,9 +18,10 @@ local _PRINT_DEBUG_INFO = false
           '---'        `---'                        `---'
 
 LDRIS 2 (Work in Progress)
-Last update: April 18th 2025
+Last update: April 22nd 2025
 
 Current features:
++ Basic modem multiplayer!
 + SRS wall kicks! 180-spins!
 + 7bag randomization!
 + Modern-feeling controls!
@@ -31,21 +32,22 @@ Current features:
 + Included sound effects!
 
 To-do:
++ Finish polishing up multiplayer
++ Polish the menu and let you select from singleplayer and multiplayer
++ Add proper game over screen
 + Implement DFPWM audio so that real sound effects work in CC:Tweaked
 + Try to further mitigate any garbage collector-related slowdown in CraftOS-PC
 + Refactor code to look prettier
 + Add score, and let line clears and piece dropping add to it
 + Implement initial hold and initial rotation
-+ Improve menu drastically
-+ Implement proper Multiplayer (aiming for modem-only for now)
 + Implement arcade features (proper kiosk mode, krist integration)
 + Add touchscreen-friendly controls for CraftOS-PC Mobile
 + Cheese race mode
 + 40-line Sprint mode
 + Add in-game menu for changing controls (some people can actually tolerate guideline)
-]]
+--]]
 
--- if my indenting is fucked, I blame zed's default settings'
+-- if my indenting is fucked, I blame zed (neovim for life)
 
 local scr_x, scr_y = term.getSize()
 
@@ -300,6 +302,10 @@ local function startGame()
 				term.setCursorPos(10, 1)
 				term.write("ft=" .. tostring(frame_time) .. "ms  ")
 			end
+		end
+
+		if collectgarbage then
+		--	collectgarbage("collect")
 		end
 	end
 end

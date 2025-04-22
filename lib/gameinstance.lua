@@ -44,6 +44,7 @@ local nm_actionlookup = {
 	mino_lock = 2,
 	board_update = 3,
 	send_garbage = 4,
+	mino_hold = 5,
 }
 
 function GameInstance:SerializeNetworkMoment(action, param1, param2, param3, param4)
@@ -67,10 +68,11 @@ function GameInstance:SerializeNetworkMoment(action, param1, param2, param3, par
 		})
 	
 	elseif action == "send_garbage" then
-		output = table.concat({
-			output,
-			string.char(param1)
-		})
+		output = output .. string.char(param1)
+	
+	elseif action == "mino_hold" then
+		output = output .. string.char(param1)
+
 	end
 
 	return "ldris2" .. output
@@ -113,6 +115,11 @@ function GameInstance:ParseNetworkMoment(input)
 	elseif input:sub(1, 1) == "4" then -- send_garbage
 		moment.action = "send_garbage"
 		moment.garbage = string.byte(input:sub(2, 2))
+
+	elseif input:sub(1, 1) == "5" then
+		moment.action = "mino_hold"
+		moment.minoID = string.byte(input:sub(2, 2))
+		
 	else
 		return
 	end
@@ -478,6 +485,7 @@ function GameInstance:Tick()
 	local doCheckStuff = false
 	local doAnimateQueue = false
 	local doMakeNewMino = false
+	self.state.didHold = false
 
 	self.queue_anim = math.max(0, self.queue_anim - 0.8)
 	self.state.gravity = gameConfig.startingGravity + (math.floor(self.state.linesCleared / 10) * 0.1)
@@ -792,6 +800,10 @@ function GameInstance:Resume(evt, doTick)
 	local doRender = false
 
 	local moment -- used for multiplayer
+	if evt[1] == "network_moment" then
+		moment = self:ParseNetworkMoment(evt[2])
+		_G.moment = moment
+	end
 
 	if not self.networked then
 
@@ -825,42 +837,58 @@ function GameInstance:Resume(evt, doTick)
 			end
 		end
 
+		if evt[1] == "network_moment" then
+			if moment.action == "send_garbage" then
+				self.state.incomingGarbage = moment.garbage
+				doRender = true
+			end
+		end
+
 		if self.state.topOut then
 			-- this will have a more elaborate game over sequence later
 			self.message.gameover = true
 		end
 
-	end
+	else
 
-	-- "network_moments" always come from other clients
-	if evt[1] == "network_moment" then
-		moment = self:ParseNetworkMoment(evt[2])
-		_G.moment = moment
+		-- "network_moments" always come from other clients
+		if evt[1] == "network_moment" then
+			moment = self:ParseNetworkMoment(evt[2])
+			_G.moment = moment
 
-		if moment.action == "mino_setpos" then
-			mino.x = moment.x
-			mino.y = moment.y
-			mino.minoID = moment.minoID
-			mino:ForceRotateLookup(moment.rotation, self.mino_rotable)
-			doRender = true
+			if moment.action == "mino_setpos" then
+				mino.x = moment.x
+				mino.y = moment.y
+				mino.minoID = moment.minoID
+				mino:ForceRotateLookup(moment.rotation, self.mino_rotable)
+				doRender = true
 
-		elseif moment.action == "mino_lock" then
-			mino.x = moment.x
-			mino.y = moment.y
-			mino.minoID = moment.minoID
-			mino:ForceRotateLookup(moment.rotation, self.mino_rotable)
-			mino.lock_timer = 0
-			doRender = true
+			elseif moment.action == "mino_lock" then
+				mino.x = moment.x
+				mino.y = moment.y
+				mino.minoID = moment.minoID
+				mino:ForceRotateLookup(moment.rotation, self.mino_rotable)
+				mino.lock_timer = 0
+				doRender = true
 
-		elseif moment.action == "board_update" then
-			self.state.board.contents = moment.contents
-			doRender = true
+			elseif moment.action == "board_update" then
+				self.state.board.contents = moment.contents
+				doRender = true
 
-		elseif moment.action == "send_garbage" then
-			self.state.incomingGarbage = moment.garbage
-			doRender = true
-
+			elseif moment.action == "mino_hold" then
+				-- draw held piece
+				self.state.holdBoard:Clear()
+				Mino:New(
+					self.mino_table,
+					moment.minoID,
+					self.state.holdBoard,
+					1 + (gameConfig.minos[mino.minoID].spawnOffsetX or 0),
+					2,
+					{}
+				):Write()
+			end
 		end
+	
 	end
 
 	if doRender then
@@ -885,7 +913,7 @@ function GameInstance:Resume(evt, doTick)
 	end
 
 	if (not self.networked) then
-		if self.state.gameTickCount % 4 == 0 then
+		if self.state.gameTickCount % 3 == 0 then
 			self.message.packet = {
 				self:SerializeNetworkMoment("mino_setpos", mino.x, mino.y, mino.minoID, mino.rotation),
 				self:SerializeNetworkMoment("board_update", self.state.board.contents)
@@ -896,6 +924,10 @@ function GameInstance:Resume(evt, doTick)
 
 		if self.message.attack then
 			table.insert(self.message.packet, self:SerializeNetworkMoment("send_garbage", self.message.attack))
+		end
+
+		if self.state.didHold then
+			table.insert(self.message.packet, self:SerializeNetworkMoment("mino_hold", self.state.heldPiece))
 		end
 	end
 
