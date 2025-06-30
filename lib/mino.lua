@@ -100,6 +100,7 @@ function Mino:CheckCollision(xMod, yMod, doNotCountBorder, round)
 end
 
 -- checks whether or not the (x, y) position of the mino's shape is solid
+-- returns success, and optionally a hex color
 function Mino:CheckSolid(x, y, relativeToBoard)
 	--print(x, y, relativeToBoard)
 	if relativeToBoard then
@@ -116,6 +117,14 @@ function Mino:CheckSolid(x, y, relativeToBoard)
 	end
 	
 	return false
+end
+
+function Mino:Shade(sMatch, sRepl)
+	assert(#sMatch == #sRepl, "both arguments must be same length")
+	for i, line in ipairs(self.shape) do
+		self.shape[i] = line:gsub(sMatch, sRepl)
+	end
+	return self
 end
 
 -- direction = 1: clockwise

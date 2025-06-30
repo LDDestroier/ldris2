@@ -39,4 +39,7 @@ return {
 	
 	-- amount of pieces visible in the queue (limited by size of UI)
 	queue_length = 5,
+	
+	-- whether or not to render the ghost mino
+	do_ghost_piece = true,
 }

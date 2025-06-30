@@ -73,6 +73,15 @@ function GameInstance:SerializeNetworkMoment(action, param1, param2, param3, par
 	elseif action == "mino_hold" then
 		output = output .. string.char(param1)
 
+	elseif action == "update" then
+		output = table.concat({
+			output,
+			string.char(param1), -- incomingGarbage
+			string.char(param2), -- lines just cleared
+			string.char(param3 or 0), -- ???
+			string.char(param4 or 0)  -- ???
+		})
+	
 	end
 
 	return "ldris2" .. output
@@ -90,36 +99,43 @@ function GameInstance:ParseNetworkMoment(input)
 
 	moment.uid = input:sub(1, 8)
 	input = input:sub(9)
+	local moment_type = input:sub(1, 1)
 
-	if input:sub(1, 1) == "1" then -- mino_setpos
+	if moment_type == "1" then -- mino_setpos
 		moment.action = "mino_setpos"
 		moment.x = string.byte(input:sub(2, 2)) - 127
 		moment.y = string.byte(input:sub(3, 3)) - 127
 		moment.minoID = string.byte(input:sub(4, 4))
 		moment.rotation = string.byte(input:sub(5, 5))
 	
-	elseif input:sub(1, 1) == "2" then -- mino_lock
+	elseif moment_type == "2" then -- mino_lock
 		moment.action = "mino_lock"
 		moment.x = string.byte(input:sub(2, 2)) - 127
 		moment.y = string.byte(input:sub(3, 3)) - 127
 		moment.minoID = string.byte(input:sub(4, 4))
 		moment.rotation = string.byte(input:sub(5, 5))
 
-	elseif input:sub(1, 1) == "3" then -- board_update
+	elseif moment_type == "3" then -- board_update
 		moment.action = "board_update"
 		moment.contents = {}
 		for i = 1, #input - 1, self.state.board.width do
 			moment.contents[#moment.contents + 1] = input:sub(i + 1, i + 11)
 		end
 
-	elseif input:sub(1, 1) == "4" then -- send_garbage
+	elseif moment_type == "4" then -- send_garbage
 		moment.action = "send_garbage"
 		moment.garbage = string.byte(input:sub(2, 2))
 
-	elseif input:sub(1, 1) == "5" then
+	elseif moment_type == "5" then
 		moment.action = "mino_hold"
 		moment.minoID = string.byte(input:sub(2, 2))
 		
+	elseif moment_type == "6" then
+		moment.action = "update"
+		moment.incomingGarbage = string.byte(input:sub(2, 2))
+		moment.linesJustCleared = string.byte(input:sub(3, 3))
+		-- third field?
+		-- fourth field?
 	else
 		return
 	end
@@ -143,8 +159,19 @@ function GameInstance:MakeRotatedMinoLookup(mino_table)
 	return output
 end
 
+function GameInstance:GetSize()
+	return 
+		gameConfig.board_width + (self.do_compact_view and 5 or 10),
+		math.ceil(self.state.board.visibleHeight * 0.666)
+end
+
 function GameInstance:Initiate(mino_table, randomseed)
 	self.networked = false
+	self.do_compact_view = false -- should set true, if you're doing multiplayer on a pocket computer
+								-- do_compact_view moves the queue and hold boards to be above each other
+	self.canPause = true
+	self.do_render_tiny = false -- should set true, if you're a puppeted networked client
+	self.visible = true
 	self.state = {
 		gravity = gameConfig.startingGravity,
 		targetPlayer = 0,
@@ -158,6 +185,7 @@ function GameInstance:Initiate(mino_table, randomseed)
 		queue = {},
 		queueMinos = {},
 		linesCleared = 0,
+		linesJustCleared = 0,
 		minosMade = 0,
 		random_bag = {},
 		gameTickCount = 0,
@@ -218,8 +246,7 @@ function GameInstance:Initiate(mino_table, randomseed)
 	)
 	self.state.garbageBoard.visibleHeight = self.state.garbageBoard.height
 
-	self.width = gameConfig.board_width + 10
-	self.height = math.ceil(self.state.board.visibleHeight * 0.666)
+	self.width, self.height = self:GetSize()
 
 	-- populate the queue
 	for i = 1, self.clientConfig.queue_length + 1 do
@@ -265,6 +292,10 @@ function GameInstance:Initiate(mino_table, randomseed)
 			color = "e"
 		}
 	}, 1, self.state.garbageBoard, 1, self.state.garbageBoard.height + 1)
+	
+	if self.networked then
+		self.canPause = false
+	end
 
 	self.control.keysDown = {}
 
@@ -280,17 +311,31 @@ function GameInstance:Move(x, y)
 	self.board_xmod = math.floor(x or self.board_xmod)
 	self.board_ymod = math.floor(y or self.board_ymod)
 
-	board.x = 7 + self.board_xmod
-	board.y = 1 + self.board_ymod
-
-	queueBoard.x = board.x + board.width + 1
-	queueBoard.y = board.y
-
-	holdBoard.x = 2 + self.board_xmod
-	holdBoard.y = 1 + self.board_ymod
+	if self.do_compact_view then
+		board.x = 5 + self.board_xmod
+		board.y = 1 + self.board_ymod
+		
+		holdBoard.x = board.width + holdBoard.width + board.x - 3
+		holdBoard.y = board.y + 5
+		
+		queueBoard.x = board.width + holdBoard.width + board.x - 3
+		queueBoard.y = board.y
+	else
+		board.x = 7 + self.board_xmod
+		board.y = 1 + self.board_ymod
+		
+		holdBoard.x = 2 + self.board_xmod
+		holdBoard.y = 1 + self.board_ymod
+		
+		queueBoard.x = board.width + holdBoard.width + board.x - 3
+		queueBoard.y = board.y
+	end
 
 	garbageBoard.x = board.x - 1
 	garbageBoard.y = board.y
+	
+	self.width, self.height = self:GetSize()
+	self:Render(true, {ignore_dirty = true})
 end
 
 function GameInstance:MakeSound(name)
@@ -436,8 +481,9 @@ function GameInstance:HandleLineClears()
 		end
 		self.state.board.contents = newContents
 	end
-
+	
 	self.state.linesCleared = self.state.linesCleared + #clearedLines
+	self.state.linesJustCleared = #clearedLines
 
 	return clearedLines
 end
@@ -454,12 +500,36 @@ function GameInstance:ReceiveGarbage(amount)
 	end
 end
 
-function GameInstance:Render(doDrawOtherBoards)
-	self.state.board:Render(self.state.ghostMino, self.state.mino)
-	if doDrawOtherBoards then
-		self.state.holdBoard:Render()
-		self.state.queueBoard:Render(table.unpack(self.state.queueMinos))
-		self.state.garbageBoard:Render(self.state.garbageMino)
+function GameInstance:Render(doDrawOtherBoards, tOpts)
+	if self.visible then
+		if self.clientConfig.do_ghost_piece then
+			self.state.board:Render(tOpts, self.state.ghostMino, self.state.mino)
+		else
+			self.state.board:Render(tOpts, self.state.mino)
+		end
+		if doDrawOtherBoards then
+			self.state.holdBoard:Render(tOpts)
+			self.state.queueBoard:Render(tOpts, table.unpack(self.state.queueMinos))
+			self.state.garbageBoard:Render(tOpts, self.state.garbageMino)
+		end
+	end
+end
+
+-- intended for previews of an enemy's board over a networked game
+function GameInstance:RenderTiny(doDrawOtherBoards)
+	if self.visible then
+		if self.networked or (not self.clientConfig.do_ghost_piece) then
+			self.state.board:RenderTiny(nil, self.state.mino)
+		else
+			self.state.board:RenderTiny(nil, self.state.ghostMino, self.state.mino)
+		end
+		if doDrawOtherBoards then
+			self.state.holdBoard:RenderTiny({2, 0})
+			self.state.garbageBoard:RenderTiny(nil, self.state.garbageMino)
+			if not self.networked then
+				self.state.queueBoard:RenderTiny({-5, 0}, table.unpack(self.state.queueMinos))
+			end
+		end
 	end
 end
 
@@ -477,7 +547,6 @@ end
 
 function GameInstance:Tick()
 	local mino, ghostMino, garbageMino = self.state.mino, self.state.ghostMino, self.state.garbageMino
-	--	local holdBoard, queueBoard, garbageBoard = self.state.holdBoard, self.state.queueBoard, self.state.garbageBoard
 
 	self.didJustClearLine = false
 
@@ -713,8 +782,10 @@ function GameInstance:ControlTick(onlyFastActions)
 	local board = self.state.board
 
 	if control:CheckControl("pause", false) then
-		self.state.paused = not self.state.paused
-		control.antiControlRepeat["pause"] = true
+		if self.canPause then
+			self.state.paused = not self.state.paused
+			control.antiControlRepeat["pause"] = true
+		end
 	end
 
 	if self.state.paused or not mino.active then
@@ -794,6 +865,23 @@ function GameInstance:ControlTick(onlyFastActions)
 	return didSlowAction
 end
 
+function GameInstance:GameOverAnimation()
+	local old_overtop_height = self.state.board.overtopHeight
+	for i = 1, math.ceil(self.state.board.visibleHeight) do
+		if self.do_render_tiny then
+			self.state.board:AddGarbage(1, true, (i % 2 == 0) and " " or "0")
+			self.state.board:RenderTiny()
+		else
+			self.state.board:AddGarbage(1, true, (i % 2 == 0) and "0" or "8")
+			self.state.board:Render({ignore_dirty = true})
+		end
+		self.state.board.overtopHeight = 0
+		sleep(0.1)
+	end
+	self.state.board.overtopHeight = old_overtop_height
+	sleep(0.5)
+end
+
 function GameInstance:Resume(evt, doTick)
 	local mino, ghostMino, garbageMino = self.state.mino, self.state.ghostMino, self.state.garbageMino
 	self.message = {} -- sends back to main
@@ -802,7 +890,7 @@ function GameInstance:Resume(evt, doTick)
 	local moment -- used for multiplayer
 	if evt[1] == "network_moment" then
 		moment = self:ParseNetworkMoment(evt[2])
-		_G.moment = moment
+		--_G.moment = moment
 	end
 
 	if not self.networked then
@@ -814,6 +902,13 @@ function GameInstance:Resume(evt, doTick)
 			self.didControlTick = self:ControlTick(false)
 			self.state.controlTickCount = self.state.controlTickCount + 1
 			doRender = true
+			
+			if evt[2] == keys.one then
+				self.state.incomingGarbage = self.state.incomingGarbage + 1
+			elseif evt[2] == keys.two then
+				self:GameOverAnimation()
+				self.message.quit = true
+			end
 
 		elseif evt[1] == "key_up" then
 			self.control.keysDown[evt[2]] = nil
@@ -837,7 +932,7 @@ function GameInstance:Resume(evt, doTick)
 			end
 		end
 
-		if evt[1] == "network_moment" then
+		if evt[1] == "network_moment" and moment then
 			if moment.action == "send_garbage" then
 				self.state.incomingGarbage = moment.garbage
 				doRender = true
@@ -847,14 +942,16 @@ function GameInstance:Resume(evt, doTick)
 		if self.state.topOut then
 			-- this will have a more elaborate game over sequence later
 			self.message.gameover = true
+			self:GameOverAnimation()
+			self.message.quit = true
 		end
 
 	else
 
 		-- "network_moments" always come from other clients
-		if evt[1] == "network_moment" then
-			moment = self:ParseNetworkMoment(evt[2])
-			_G.moment = moment
+		if evt[1] == "network_moment" and moment then
+			--moment = self:ParseNetworkMoment(evt[2])
+			--_G.moment = moment
 
 			if moment.action == "mino_setpos" then
 				mino.x = moment.x
@@ -873,6 +970,7 @@ function GameInstance:Resume(evt, doTick)
 
 			elseif moment.action == "board_update" then
 				self.state.board.contents = moment.contents
+				self.visible = true
 				doRender = true
 
 			elseif moment.action == "mino_hold" then
@@ -886,6 +984,10 @@ function GameInstance:Resume(evt, doTick)
 					2,
 					{}
 				):Write()
+			elseif moment.action == "update" then
+				self.state.incomingGarbage = moment.incomingGarbage
+				self.state.linesCleared = self.state.linesCleared + moment.linesJustCleared
+				self.visible = true
 			end
 		end
 	
@@ -901,7 +1003,11 @@ function GameInstance:Resume(evt, doTick)
 
 		garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
 
-		self:Render(true)
+		if self.do_render_tiny then
+			self:RenderTiny(true)
+		else
+			self:Render(true)
+		end
 		--GameDebug.profile("Render", scr_y-3, function() self:Render(true) end)
 		if true then
 			term.setCursorPos(self.state.board.x, (self.state.board.y) * 2 + self.height)
@@ -912,14 +1018,19 @@ function GameInstance:Resume(evt, doTick)
 		end
 	end
 
+	self.message.packet = nil
 	if (not self.networked) then
 		if self.state.gameTickCount % 3 == 0 then
 			self.message.packet = {
 				self:SerializeNetworkMoment("mino_setpos", mino.x, mino.y, mino.minoID, mino.rotation),
-				self:SerializeNetworkMoment("board_update", self.state.board.contents)
+				self:SerializeNetworkMoment("board_update", self.state.board.contents),
 			}
 		else
 			self.message.packet = {}
+		end
+		
+		if (self.state.gameTickCount % 3 == 0) or (self.state.linesJustCleared > 0) then
+			table.insert(self.message.packet, self:SerializeNetworkMoment("update", self.state.incomingGarbage, self.state.linesJustCleared))
 		end
 
 		if self.message.attack then

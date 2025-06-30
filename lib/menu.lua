@@ -36,6 +36,25 @@ function Menu:CycleCursor()
 	self.cursor_index = (self.cursor_index % #self.cursor) + 1
 end
 
+function Menu:Move(x, y)
+	self.x = tonumber(x) or self.x
+	self.y = tonumber(y) or self.y
+end
+
+-- takes absolute mouse X and Y, optionally returns menu index
+function Menu:MouseSelect(x, y)
+	local sel
+	local mx = (x - self.x) + 1
+	local my = (y - self.y) + 1
+	for i, option in ipairs(self.options) do
+		if my == option[3] then
+			if mx >= option[2] and mx < (option[2] + #option[1]) then
+				return i
+			end
+		end
+	end
+end
+
 function Menu:AddOption(name, sID, rx, ry)
 	assert(type(sID) == "string", "menu options must have string ID")
 	name = name or ""
@@ -49,10 +68,10 @@ function Menu:GetSelected()
 	return self.options[self.selected][4]
 end
 
-function Menu:SetTitle(title, rx)
+function Menu:SetTitle(title, ry)
 	assert(type(title) == "string", "asshole")
 	self.title[1] = title
-	self.title[2] = rx or self.title[2]
+	self.title[2] = ry or self.title[2]
 end
 
 function Menu:MoveSelect(delta)

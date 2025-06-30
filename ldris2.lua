@@ -1,4 +1,4 @@
-local _AMOUNT_OF_GAMES = 2
+local _AMOUNT_OF_GAMES = 1
 local _PRINT_DEBUG_INFO = false
 --[[
    ,--,
@@ -58,18 +58,26 @@ local Control = require "lib.control"
 local GameDebug = require "lib.gamedebug"
 local Menu = require "lib.menu"
 local cospc_debuglog = GameDebug.cospc_debuglog
+
 local clientConfig = require "config.clientconfig" -- client config can be changed however you please
 local gameConfig = require "config.gameconfig"     -- ideally, only clients with IDENTICAL game configs should face one another
 gameConfig.kickTables = require "lib.kicktables"
 
 local modem = peripheral.find("modem")
-if (not modem) and ccemux then
-	ccemux.attach("top", "wireless_modem")
-	modem = peripheral.wrap("top")
+if (not modem) then
+	if ccemux then -- CCEmuX
+		ccemux.attach("top", "wireless_modem")
+		modem = peripheral.wrap("top")
+	elseif periphemu then -- CraftOS-PC
+		periphemu.create("top", "modem")
+		modem = peripheral.wrap("top")
+	end
 end
 
 if modem then
 	modem.open(100)
+else
+	error("no modem???")
 end
 
 --local dfpwm = require "cc.audio.dfpwm"
@@ -141,6 +149,7 @@ local function move_games(GAMES)
 			(scr_x / 2) - ((#GAMES * game_size[1]) / 2) + (game_size[1] * (i - 1)),
 			(scr_y / 4) - ((game_size[2] - 5) / 2) + 1
 		)
+		GAMES[i]:Render({ignore_dirty = true})
 	end
 end
 
@@ -151,22 +160,29 @@ local function cwrite(text, y, color)
 	if color then
 		term.setTextColor(color)
 	end
-	term.setCursorPos(sx / 2 - #text / 2, y or (sy / 2))
+	term.setCursorPos(math.ceil(sx / 2 - #text / 2), y or (sy / 2))
 	term.write(text)
 	term.setTextColor(color)
 end
 
-local function WIPscreen(message)
+local function WIPscreen(...)
+	local evt = {}
+	local messages = {...}
 	term.clear()
-	cwrite(message, 3, colors.white)
-	sleep(0.25)
-	cwrite("Press any key to continue", 6, colors.lightGray)
-	os.pullEvent("key")
+	for i = 1, #messages do
+		cwrite(messages[i], 2 + i, colors.white)
+		sleep(0.1)
+	end
+	sleep(0.15)
+	cwrite("Press any key to continue", 5 + #messages, colors.lightGray)
+	repeat
+		evt = {os.pullEvent()}
+	until evt[1] == "key" or evt[1] == "mouse_click"
 	sleep(0.1)
 	term.clear()
 end
 
-local function startGame()
+local function startGame(mode_name, is_networked)
 
 	cospc_debuglog(2, "Starting game.")
 	term.clear()
@@ -182,6 +198,12 @@ local function startGame()
 		table.insert(GAMES, GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate(gameConfig.minos, last_epoch))
 		if i > 1 then
 			GAMES[i].networked = true
+			GAMES[i].do_render_tiny = true
+			GAMES[i].do_compact_view = true
+			GAMES[i].visible = false
+		end
+		if mode_name == "marathon_tiny" then
+			GAMES[i].do_render_tiny = true
 		end
 	end
 	local player_number = math.max(1, math.floor(#GAMES / 2))
@@ -199,7 +221,7 @@ local function startGame()
 		doResume = true
 		evt = { os.pullEvent() }
 
-		if evt[1] == "modem_message" then
+		if evt[1] == "modem_message" and is_networked then
 			if type(evt[5]) == "string" then
 				if evt[5]:sub(1, 6) == "ldris2" then
 					evt = {"network_moment", evt[5]}
@@ -290,7 +312,7 @@ local function startGame()
 				end
 
 				-- send network packets
-				if message.packet and modem then
+				if message.packet and modem and is_networked then
 					for ii, packet in ipairs(message.packet) do
 						modem.transmit(100, 100, packet)
 					end
@@ -317,10 +339,11 @@ local function titleScreen()
 	local mainmenu = Menu:New(2, 2)
 	mainmenu:SetTitle("LDRIS 2", 1)
 	mainmenu:AddOption("Marathon", "marathon", 1, 3)
-	mainmenu:AddOption("Multiplayer (Modem)", "mp_modem", 1, 4)
-	mainmenu:AddOption("Modes", "mode_menu", 1, 5)
-	mainmenu:AddOption("Options", "options_menu", 1, 6)
-	mainmenu:AddOption("Quit", "quit_game", 1, 8)
+	mainmenu:AddOption("Marathon (Tiny)", "marathon_tiny", 1, 4)
+	mainmenu:AddOption("Multiplayer (Modem)", "mp_modem", 1, 5)
+	mainmenu:AddOption("Modes", "mode_menu", 1, 6)
+	mainmenu:AddOption("Options", "options_menu", 1, 7)
+	mainmenu:AddOption("Quit", "quit_game", 1, 9)
 	mainmenu.selected = 1
 	mainmenu.cursor = {"O ", "@ "}
 	mainmenu.cursor_blink = 0.05
@@ -333,6 +356,12 @@ local function titleScreen()
 	modemenu:AddOption("Return", "main_menu", 1, 7)
 	modemenu.cursor = {"O ", "@ "}
 	modemenu.cursor_blink = 0.05
+	
+	-- size consideration for pocket computers
+	if scr_x < 45 then
+		modemenu:Move(2, 11)
+		modemenu:SetTitle("MODES:", 1)
+	end
 
 	local evt
 	local tickTimer = os.startTimer(mainmenu.cursor_blink)
@@ -340,6 +369,7 @@ local function titleScreen()
 	local sel
 
 	local MENU = mainmenu
+	local force_select = false
 
 	while true do
 		if doRenderMenu then
@@ -357,6 +387,14 @@ local function titleScreen()
 			tickTimer = os.startTimer(MENU.cursor_blink)
 			MENU:CycleCursor()
 			doRenderMenu = true
+			
+		elseif evt[1] == "mouse_click" and evt[2] < 3 then
+			local sel_try = MENU:MouseSelect(evt[3], evt[4])
+			if sel_try == MENU.selected or evt[2] == 2 then
+				force_select = true
+			end
+			MENU.selected = sel_try or MENU.selected
+			doRenderMenu = true
 		end
 
 		if control:CheckControl("menu_up") then
@@ -367,15 +405,25 @@ local function titleScreen()
 			MENU:MoveSelect(1)
 			doRenderMenu = true
 
-		elseif control:CheckControl("menu_select") then
+		elseif control:CheckControl("menu_select") or force_select then
+			force_select = false
 			sel = MENU:GetSelected()
 			do
 				if sel == "marathon" then
-					startGame()
+					_AMOUNT_OF_GAMES = 1
+					startGame(sel, false)
+					term.clear()
+				
+				elseif sel == "marathon_tiny" then
+					_AMOUNT_OF_GAMES = 1
+					startGame(sel, false)
 					term.clear()
 
 				elseif sel == "mp_modem" then
-					WIPscreen("Multiplayer will be implemented later!")
+					_AMOUNT_OF_GAMES = 2
+					--WIPscreen("Multiplayer will be", "implemented later!")
+					startGame(sel, true)
+					term.clear()
 
 				elseif sel == "mode_menu" then
 					MENU:Render(true)
@@ -387,7 +435,7 @@ local function titleScreen()
 					term.clear()
 
 				elseif sel == "options_menu" then
-					WIPscreen("Options will be added later! Really!")
+					WIPscreen("Options will be", "added later!","","","...Really!")
 
 				elseif sel == "quit_game" then
 					return
@@ -396,15 +444,15 @@ local function titleScreen()
 
 			do
 				if sel == "cheese_race" then
-					WIPscreen("Cheese race will be added later!")
+					WIPscreen("Cheese race will be", "added later!")
 					mainmenu:Render(true)
 
 				elseif sel == "sprint" then
-					WIPscreen("Sprint mode will be added later!")
+					WIPscreen("Sprint mode will be", "added later!")
 					mainmenu:Render(true)
 
 				elseif sel == "othershit" then
-					WIPscreen("Other modes will be added later!")
+					WIPscreen("Other modes will be", "added later!")
 					mainmenu:Render(true)
 				end
 			end
