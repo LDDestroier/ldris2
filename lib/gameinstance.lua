@@ -4,8 +4,6 @@
 local Mino = require "lib.mino"
 local Board = require "lib.board"
 local gameConfig = require "config.gameconfig"
-local GameDebug = require "lib.gamedebug"
-local cospc_debuglog = GameDebug.cospc_debuglog
 
 local modem = peripheral.find("modem")
 if (not modem) and (ccemux) then
@@ -46,6 +44,10 @@ local nm_actionlookup = {
 	send_garbage = 4,
 	mino_hold = 5,
 }
+
+function GameInstance:AttachDebug(gamedebug)
+	self.DEBUG = gamedebug
+end
 
 function GameInstance:SerializeNetworkMoment(action, param1, param2, param3, param4)
 	local output = self.uid .. (nm_actionlookup[action] or " ")
@@ -196,7 +198,7 @@ function GameInstance:Initiate(mino_table, randomseed)
 		combo = 0,           -- amount of successive line clears
 		backToBack = 0,      -- amount of tetris/t-spins comboed
 		spinLevel = 0        -- 0 = no special spin
-	}                        -- 1 = mini spin
+	}                        -- 1 = T spin mini
 							 -- 2 = Z/S/J/L spin
 							 -- 3 = T spin
 
@@ -335,7 +337,11 @@ function GameInstance:Move(x, y)
 	garbageBoard.y = board.y
 	
 	self.width, self.height = self:GetSize()
-	self:Render(true, {ignore_dirty = true})
+	if self.do_render_tiny then
+		self:RenderTiny(true, {ignore_dirty = true})
+	else
+		self:Render(true, {ignore_dirty = true})
+	end
 end
 
 function GameInstance:MakeSound(name)
@@ -429,7 +435,11 @@ function GameInstance:CalculateGarbage(linesCleared)
 		[8] = 8
 	}
 
-	if (self.state.spinLevel == 3) or (self.state.spinLevel == 2 and gameConfig.spin_mode >= 2) then
+	if (self.state.spinLevel == 3) or (
+		self.state.spinLevel == 2 and
+		gameConfig.spin_mode >= 2 and
+		(not gameConfig.are_non_T_spins_mini)
+	) then
 		output = output + linesCleared * 2
 	else
 		output = output + (lncleartbl[linesCleared] or 0)
@@ -547,7 +557,8 @@ end
 
 function GameInstance:Tick()
 	local mino, ghostMino, garbageMino = self.state.mino, self.state.ghostMino, self.state.garbageMino
-
+	local mino_name = mino.name
+	
 	self.didJustClearLine = false
 
 	local didCollide, didMoveX, didMoveY, yHighestDidChange = mino:Move(0, self.state.gravity, true)
@@ -694,7 +705,14 @@ function GameInstance:Tick()
 					self.didJustClearLine = true
 					self.state.combo = self.state.combo + 1
 					if #linesCleared >= 4 or self.state.spinLevel >= 1 then
-						self.state.backToBack = self.state.backToBack + 1
+						if (
+							self.state.spinLevel >= 3 or
+							(self.state.spinLevel == 2 and gameConfig.spin_mode >= 2) or
+							(self.state.spinLevel == 1 and gameConfig.spin_mode >= 3)
+						) then
+							self.state.backToBack = self.state.backToBack + 1
+						end
+						
 					else
 						self.state.backToBack = 0
 					end
@@ -706,7 +724,23 @@ function GameInstance:Tick()
 				math.max(0, self.state.incomingGarbage - garbage)
 
 				if garbage > 0 then
-					cospc_debuglog(nil, "Doled out " .. garbage .. " lines")
+					self.DEBUG:Log("Doled out " .. garbage .. " lines")
+				end
+				
+				if self.state.spinLevel == 1 then
+					self.DEBUG:Log("T-spin mini!")
+				elseif self.state.spinLevel == 2 then
+					if gameConfig.are_non_T_spins_mini then
+						self.DEBUG:Log(mino_name .. "-spin mini!")
+					else
+						self.DEBUG:Log(mino_name .. "-spin!")
+					end
+				elseif self.state.spinLevel == 3 then
+					if #linesCleared == 3 then
+						self.DEBUG:Log("T-spin triple!")
+					else
+						self.DEBUG:Log("T-spin!")
+					end
 				end
 
 				-- send garbage to enemy player
@@ -740,7 +774,8 @@ function GameInstance:CheckSpecialSpin(mino, kick_count)
 			mino.board:IsSolid(mino.x, mino.y),
 			mino.board:IsSolid(mino.x + mino.width - 1, mino.y),
 			mino.board:IsSolid(mino.x + mino.width - 1, mino.y + mino.height - 1),
-			mino.board:IsSolid(mino.x, mino.y + mino.height),
+			mino.board:IsSolid(mino.x, mino.y + mino.height - 1),
+			nil
 		}
 		local solid_count = 0
 		for i = 1, #corners do
@@ -780,15 +815,16 @@ function GameInstance:ControlTick(onlyFastActions)
 	local control = self.control
 	local mino = self.state.mino
 	local board = self.state.board
+	local state = self.state
 
 	if control:CheckControl("pause", false) then
 		if self.canPause then
-			self.state.paused = not self.state.paused
+			state.paused = not state.paused
 			control.antiControlRepeat["pause"] = true
 		end
 	end
 
-	if self.state.paused or not mino.active then
+	if state.paused or not mino.active then
 		return false
 	end
 
@@ -808,7 +844,7 @@ function GameInstance:ControlTick(onlyFastActions)
 			end
 		end
 		if control:CheckControl("soft_drop", 0) then
-			mino:Move(0, self.state.gravity * self.clientConfig.soft_drop_multiplier, true, false)
+			mino:Move(0, state.gravity * self.clientConfig.soft_drop_multiplier, true, false)
 			didSlowAction = true
 			control.antiControlRepeat["soft_drop"] = true
 		end
@@ -834,7 +870,7 @@ function GameInstance:ControlTick(onlyFastActions)
 			end
 		end
 		if control:CheckControl("quit", false) then
-			--self.state.topOut = true
+			--state.topOut = true
 			self.message.quit = true
 			control.antiControlRepeat["quit"] = true
 			didSlowAction = true
@@ -844,21 +880,21 @@ function GameInstance:ControlTick(onlyFastActions)
 	if control:CheckControl("rotate_ccw", false) and gameConfig.can_rotate then
 		_, _, kick_count = mino:RotateLookup(-1, true, self.mino_rotable)
 		if mino.spinID <= gameConfig.spin_mode then
-			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
+			state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
 		end
 		control.antiControlRepeat["rotate_ccw"] = true
 	end
 	if control:CheckControl("rotate_cw", false) and gameConfig.can_rotate then
 		_, _, kick_count = mino:RotateLookup(1, true, self.mino_rotable)
 		if mino.spinID <= gameConfig.spin_mode then
-			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
+			state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
 		end
 		control.antiControlRepeat["rotate_cw"] = true
 	end
 	if control:CheckControl("rotate_180", false) and gameConfig.can_rotate and gameConfig.can_180_spin then
 		_, _, kick_count = mino:RotateLookup(2, true, self.mino_rotable)
 		if mino.spinID <= gameConfig.spin_mode then
-			self.state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
+			state.spinLevel = self:CheckSpecialSpin(mino, kick_count)
 		end
 	end
 
@@ -884,13 +920,14 @@ end
 
 function GameInstance:Resume(evt, doTick)
 	local mino, ghostMino, garbageMino = self.state.mino, self.state.ghostMino, self.state.garbageMino
+	local state, control = self.state, self.control
 	self.message = {} -- sends back to main
+	
 	local doRender = false
-
 	local moment -- used for multiplayer
+	
 	if evt[1] == "network_moment" then
 		moment = self:ParseNetworkMoment(evt[2])
-		--_G.moment = moment
 	end
 
 	if not self.networked then
@@ -900,11 +937,11 @@ function GameInstance:Resume(evt, doTick)
 		if evt[1] == "key" and not evt[3] then
 			self.control.keysDown[evt[2]] = 1
 			self.didControlTick = self:ControlTick(false)
-			self.state.controlTickCount = self.state.controlTickCount + 1
+			state.controlTickCount = state.controlTickCount + 1
 			doRender = true
 			
 			if evt[2] == keys.one then
-				self.state.incomingGarbage = self.state.incomingGarbage + 1
+				state.incomingGarbage = state.incomingGarbage + 1
 			elseif evt[2] == keys.two then
 				self:GameOverAnimation()
 				self.message.quit = true
@@ -920,10 +957,10 @@ function GameInstance:Resume(evt, doTick)
 					self.control.keysDown[k] = 1 + v
 				end
 				self:ControlTick(self.didControlTick)
-				self.state.controlTickCount = self.state.controlTickCount + 1
-				if not self.state.paused then
+				state.controlTickCount = state.controlTickCount + 1
+				if not state.paused then
 					self:Tick(message)
-					self.state.gameTickCount = self.state.gameTickCount + 1
+					state.gameTickCount = state.gameTickCount + 1
 				end
 				self.didControlTick = false
 				self.control.antiControlRepeat = {}
@@ -934,14 +971,15 @@ function GameInstance:Resume(evt, doTick)
 
 		if evt[1] == "network_moment" and moment then
 			if moment.action == "send_garbage" then
-				self.state.incomingGarbage = moment.garbage
+				state.incomingGarbage = moment.garbage
 				doRender = true
 			end
 		end
 
-		if self.state.topOut then
+		if state.topOut then
 			-- this will have a more elaborate game over sequence later
 			self.message.gameover = true
+			DEBUG:Log("Game over!")
 			self:GameOverAnimation()
 			self.message.quit = true
 		end
@@ -969,24 +1007,25 @@ function GameInstance:Resume(evt, doTick)
 				doRender = true
 
 			elseif moment.action == "board_update" then
-				self.state.board.contents = moment.contents
+				state.board.contents = moment.contents
 				self.visible = true
 				doRender = true
 
 			elseif moment.action == "mino_hold" then
 				-- draw held piece
-				self.state.holdBoard:Clear()
+				state.holdBoard:Clear()
 				Mino:New(
 					self.mino_table,
 					moment.minoID,
-					self.state.holdBoard,
+					state.holdBoard,
 					1 + (gameConfig.minos[mino.minoID].spawnOffsetX or 0),
 					2,
 					{}
 				):Write()
+				doRender = true
 			elseif moment.action == "update" then
-				self.state.incomingGarbage = moment.incomingGarbage
-				self.state.linesCleared = self.state.linesCleared + moment.linesJustCleared
+				state.incomingGarbage = moment.incomingGarbage
+				state.linesCleared = state.linesCleared + moment.linesJustCleared
 				self.visible = true
 			end
 		end
@@ -995,51 +1034,51 @@ function GameInstance:Resume(evt, doTick)
 
 	if doRender then
 		-- handle ghost piece
-		ghostMino.color = "c"
-		ghostMino.shape = mino.shape
-		ghostMino.x = mino.x
-		ghostMino.y = mino.y
-		ghostMino:Move(0, self.state.board.height, true)
+		if self.clientConfig.do_ghost_piece then
+			ghostMino.color = "c"
+			ghostMino.shape = mino.shape
+			ghostMino.x = mino.x
+			ghostMino.y = mino.y
+			ghostMino:Move(0, state.board.height, true)
 
-		garbageMino.y = 1 + self.state.garbageBoard.height - self.state.incomingGarbage
-
+			garbageMino.y = 1 + state.garbageBoard.height - state.incomingGarbage
+		end
+		
 		if self.do_render_tiny then
 			self:RenderTiny(true)
 		else
 			self:Render(true)
 		end
-		--GameDebug.profile("Render", scr_y-3, function() self:Render(true) end)
+		
 		if true then
-			term.setCursorPos(self.state.board.x, (self.state.board.y) * 2 + self.height)
+			term.setCursorPos(state.board.x, (state.board.y) * 2 + self.height)
 			term.setTextColor(colors.lightGray)
 			term.write("Lines: ")
 			term.setTextColor(colors.yellow)
-			term.write(self.state.linesCleared)
+			term.write(state.linesCleared)
 		end
 	end
 
-	self.message.packet = nil
 	if (not self.networked) then
-		if self.state.gameTickCount % 3 == 0 then
-			self.message.packet = {
-				self:SerializeNetworkMoment("mino_setpos", mino.x, mino.y, mino.minoID, mino.rotation),
-				self:SerializeNetworkMoment("board_update", self.state.board.contents),
-			}
-		else
-			self.message.packet = {}
+		local packet = {}
+		if state.gameTickCount % 3 == 0 then
+			packet[#packet + 1] = self:SerializeNetworkMoment("mino_setpos", mino.x, mino.y, mino.minoID, mino.rotation)
+			packet[#packet + 1] = self:SerializeNetworkMoment("board_update", state.board.contents)
 		end
 		
-		if (self.state.gameTickCount % 3 == 0) or (self.state.linesJustCleared > 0) then
-			table.insert(self.message.packet, self:SerializeNetworkMoment("update", self.state.incomingGarbage, self.state.linesJustCleared))
+		if (state.gameTickCount % 3 == 0) or (state.linesJustCleared > 0) then
+			packet[#packet + 1] = self:SerializeNetworkMoment("update", state.incomingGarbage, state.linesJustCleared)
 		end
 
 		if self.message.attack then
-			table.insert(self.message.packet, self:SerializeNetworkMoment("send_garbage", self.message.attack))
+			--packet[#packet + 1] = self:SerializeNetworkMoment("send_garbage", self.message.attack)
 		end
 
-		if self.state.didHold then
-			table.insert(self.message.packet, self:SerializeNetworkMoment("mino_hold", self.state.heldPiece))
+		if state.didHold then
+			packet[#packet + 1] = self.message.packet, self:SerializeNetworkMoment("mino_hold", state.heldPiece)
 		end
+		
+		self.message.packet = packet
 	end
 
 	return self.message

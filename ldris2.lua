@@ -1,5 +1,5 @@
 local _AMOUNT_OF_GAMES = 1
-local _PRINT_DEBUG_INFO = false
+local _PRINT_DEBUG_INFO = true
 --[[
    ,--,
 ,---.'|
@@ -21,7 +21,7 @@ LDRIS 2 (Work in Progress)
 Last update: April 22nd 2025
 
 Current features:
-+ Basic modem multiplayer!
++ Basic modem multiplayer! (barely functional)
 + SRS wall kicks! 180-spins!
 + 7bag randomization!
 + Modern-feeling controls!
@@ -32,11 +32,11 @@ Current features:
 + Included sound effects!
 
 To-do:
-+ Finish polishing up multiplayer
-+ Polish the menu and let you select from singleplayer and multiplayer
++ Fix multiplayer
++ Try to further mitigate any garbage collector-related slowdown in CraftOS-PC
++ Polish the menu
 + Add proper game over screen
 + Implement DFPWM audio so that real sound effects work in CC:Tweaked
-+ Try to further mitigate any garbage collector-related slowdown in CraftOS-PC
 + Refactor code to look prettier
 + Add score, and let line clears and piece dropping add to it
 + Implement initial hold and initial rotation
@@ -44,7 +44,7 @@ To-do:
 + Add touchscreen-friendly controls for CraftOS-PC Mobile
 + Cheese race mode
 + 40-line Sprint mode
-+ Add in-game menu for changing controls (some people can actually tolerate guideline)
++ Add in-game menu for changing controls (some people can actually tolerate keyboard guideline)
 --]]
 
 -- if my indenting is fucked, I blame zed (neovim for life)
@@ -57,7 +57,8 @@ local GameInstance = require "lib.gameinstance"
 local Control = require "lib.control"
 local GameDebug = require "lib.gamedebug"
 local Menu = require "lib.menu"
-local cospc_debuglog = GameDebug.cospc_debuglog
+
+local DEBUG = GameDebug:New( _PRINT_DEBUG_INFO and GameDebug.FindMonitor(), _PRINT_DEBUG_INFO)
 
 local clientConfig = require "config.clientconfig" -- client config can be changed however you please
 local gameConfig = require "config.gameconfig"     -- ideally, only clients with IDENTICAL game configs should face one another
@@ -77,7 +78,7 @@ end
 if modem then
 	modem.open(100)
 else
-	error("no modem???")
+	--error("no modem???")
 end
 
 --local dfpwm = require "cc.audio.dfpwm"
@@ -128,17 +129,12 @@ local function queueSound(name)
 end
 
 local function write_debug_stuff(game)
-	if game.control.native_control and _PRINT_DEBUG_INFO then
+	if game.control.native_control then
 		local mino = game.state.mino
-
-		term.setCursorPos(18, scr_y - 1)
-		term.write("Combo: " .. game.state.combo .. "      ")
-
-		term.setCursorPos(2, scr_y - 1)
-		term.write("M=" .. mino.movesLeft .. ", TtL=" .. tostring(mino.lockTimer):sub(1, 4) .. "  ")
-
-		term.setCursorPos(2, scr_y - 0)
-		term.write("POS=(" .. mino.x .. ":" .. tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")      ")
+		DEBUG:LogHeader("Combo=", game.state.combo, 2)
+		DEBUG:LogHeader("TimeToLock=", tostring(mino.lockTimer):sub(1, 4), 5)
+		DEBUG:LogHeader("MovesLeft=", mino.movesLeft, 3)
+		DEBUG:LogHeader("Pos=", "(" .. mino.x .. ":" .. tostring(mino.xFloat):sub(1, 5) .. ", " .. mino.y .. ":" .. tostring(mino.yFloat):sub(1, 5) .. ")", 16)
 	end
 end
 
@@ -149,7 +145,6 @@ local function move_games(GAMES)
 			(scr_x / 2) - ((#GAMES * game_size[1]) / 2) + (game_size[1] * (i - 1)),
 			(scr_y / 4) - ((game_size[2] - 5) / 2) + 1
 		)
-		GAMES[i]:Render({ignore_dirty = true})
 	end
 end
 
@@ -184,7 +179,7 @@ end
 
 local function startGame(mode_name, is_networked)
 
-	cospc_debuglog(2, "Starting game.")
+	DEBUG:Log("Starting game \"" .. mode_name .. "\", is_networked = " .. tostring(is_networked))
 	term.clear()
 
 	local tickTimer = os.startTimer(gameConfig.tickDelay)
@@ -196,6 +191,7 @@ local function startGame(mode_name, is_networked)
 	local GAMES = {}
 	for i = 1, _AMOUNT_OF_GAMES do
 		table.insert(GAMES, GameInstance:New(Control:New(clientConfig, false), 0, 0, clientConfig):Initiate(gameConfig.minos, last_epoch))
+		GAMES[i]:AttachDebug(DEBUG)
 		if i > 1 then
 			GAMES[i].networked = true
 			GAMES[i].do_render_tiny = true
@@ -216,8 +212,10 @@ local function startGame(mode_name, is_networked)
 		_GAME.control:Clear()
 		_GAME.control.native_control = (i == player_number)
 	end
+	
+	local is_game_running = true
 
-	while true do
+	while is_game_running do
 		doResume = true
 		evt = { os.pullEvent() }
 
@@ -229,17 +227,10 @@ local function startGame(mode_name, is_networked)
 			end
 		end
 
-		if _PRINT_DEBUG_INFO then
-			term.setCursorPos(1, 1)
-			term.write("t=" .. tostring(resume_count) .. "  ")
-
-			term.setCursorPos(20, 1)
-			term.write("evt=" .. tostring(evt[1]) .. "   ")
-			term.setCursorPos(32, 1)
-			term.write(tostring(evt[2]) .. "                    ")
-
-			write_debug_stuff(GAMES[player_number])
-		end
+		DEBUG:LogHeader("t=", resume_count, 6)
+		DEBUG:LogHeader("evt[1]=", evt[1], 20, true)
+		DEBUG:LogHeader("evt[2]=", evt[2], 20, true)
+		write_debug_stuff(GAMES[player_number])
 
 		last_epoch = os.epoch("utc")
 
@@ -284,18 +275,16 @@ local function startGame(mode_name, is_networked)
 		if doResume then -- do not resume on key repeat events!
 			resume_count = resume_count + 1
 			for i, GAME in ipairs(GAMES) do
---				message = GameDebug.profile("Game " .. i, i + 1, function() return (GAME:Resume(evt, doTick) or {}) end)
 				message = GAME:Resume(evt, doTick) or {}
 
 				-- restart game after topout
 				if message.gameover then
-					cospc_debuglog(i, "Game over!")
 					GAME:Initiate(nil, last_epoch)
 				end
 
 				-- quit game
 				if message.quit then
-					return
+					is_game_running = false
 				end
 
 
@@ -320,16 +309,18 @@ local function startGame(mode_name, is_networked)
 			end
 
 			frame_time = os.epoch("utc") - last_epoch
-			if _PRINT_DEBUG_INFO or (frame_time > 200) then
-				term.setCursorPos(10, 1)
-				term.write("ft=" .. tostring(frame_time) .. "ms  ")
-			end
+			DEBUG:LogHeader("ft=", tostring(frame_time) .. "ms")
+			
 		end
 
-		if collectgarbage then
-		--	collectgarbage("collect")
+		if frame_time > 100 and collectgarbage then
+			collectgarbage("collect")
 		end
+		
+		DEBUG:Render(true)
 	end
+	
+	DEBUG:Log("Game stopped.")
 end
 
 local function titleScreen()
@@ -338,12 +329,14 @@ local function titleScreen()
 
 	local mainmenu = Menu:New(2, 2)
 	mainmenu:SetTitle("LDRIS 2", 1)
-	mainmenu:AddOption("Marathon", "marathon", 1, 3)
-	mainmenu:AddOption("Marathon (Tiny)", "marathon_tiny", 1, 4)
-	mainmenu:AddOption("Multiplayer (Modem)", "mp_modem", 1, 5)
-	mainmenu:AddOption("Modes", "mode_menu", 1, 6)
-	mainmenu:AddOption("Options", "options_menu", 1, 7)
-	mainmenu:AddOption("Quit", "quit_game", 1, 9)
+	mainmenu:AddOptions({
+		{"Marathon", "marathon", 1, 3},
+		{"Marathon (Tiny)", "marathon_tiny", 1, 4},
+		{"Multiplayer (Modem)", "mp_modem", 1, 5},
+		{"Modes", "mode_menu", 1, 6},
+		{"Options", "options_menu", 1, 7},
+		{"Quit", "quit_game", 1, 9}
+	})
 	mainmenu.selected = 1
 	mainmenu.cursor = {"O ", "@ "}
 	mainmenu.cursor_blink = 0.05
@@ -356,6 +349,12 @@ local function titleScreen()
 	modemenu:AddOption("Return", "main_menu", 1, 7)
 	modemenu.cursor = {"O ", "@ "}
 	modemenu.cursor_blink = 0.05
+	
+	local optionmenu = Menu:New(2, 2)
+	optionmenu:SetTitle("Options")
+	optionmenu:AddOptions({
+		{"", "", 1, 3}
+	})
 	
 	-- size consideration for pocket computers
 	if scr_x < 45 then
@@ -370,6 +369,7 @@ local function titleScreen()
 
 	local MENU = mainmenu
 	local force_select = false
+	local force_return = false
 
 	while true do
 		if doRenderMenu then
@@ -388,10 +388,19 @@ local function titleScreen()
 			MENU:CycleCursor()
 			doRenderMenu = true
 			
+		elseif evt[1] == "term_resize" then
+			term.setCursorPos(MENU.x, MENU.y)
+			term.clearLine()
+			doRenderMenu = true
+			
 		elseif evt[1] == "mouse_click" and evt[2] < 3 then
 			local sel_try = MENU:MouseSelect(evt[3], evt[4])
-			if sel_try == MENU.selected or evt[2] == 2 then
-				force_select = true
+			if sel_try then
+				if sel_try == MENU.selected or evt[2] == 2 then
+					force_select = true
+				end
+			elseif evt[2] == 2 then
+				force_return = true
 			end
 			MENU.selected = sel_try or MENU.selected
 			doRenderMenu = true
@@ -405,9 +414,8 @@ local function titleScreen()
 			MENU:MoveSelect(1)
 			doRenderMenu = true
 
-		elseif control:CheckControl("menu_select") or force_select then
-			force_select = false
-			sel = MENU:GetSelected()
+		elseif control:CheckControl("menu_select") or force_select or force_return then
+			sel = force_return and "" or MENU:GetSelected()
 			do
 				if sel == "marathon" then
 					_AMOUNT_OF_GAMES = 1
@@ -430,7 +438,7 @@ local function titleScreen()
 					MENU = modemenu
 					MENU.selected = 1
 
-				elseif sel == "main_menu" then
+				elseif sel == "main_menu" or force_return then
 					MENU = mainmenu
 					term.clear()
 
@@ -463,13 +471,15 @@ local function titleScreen()
 		elseif control:CheckControl("quit") then
 			return
 		end
+		
+		force_select = false
+		force_return = false
 	end
 end
 
 term.clear()
 
-cospc_debuglog(nil, 0)
-cospc_debuglog(nil, "Opened LDRIS2.")
+DEBUG:Log("Opened LDRIS2.")
 
 
 local original_palette = {}
@@ -480,18 +490,39 @@ end
 term.setPaletteColor(colors.gray, 0.15, 0.15, 0.15)
 term.setPaletteColor(colors.brown, 0.25, 0.25, 0.25)
 
-local success, err_message = pcall(titleScreen)
+local runtime, success, err_message
+while true do
+	runtime, success, err_message = GameDebug.Profile(pcall, titleScreen)
+	if success then
+		break
+	else
+		printError(err_message)
+		term.setCursorPos(1, scr_y)
+		term.setBackgroundColor(colors.black)
+		term.setTextColor(colors.white)
+		print("Failed in " .. tostring(runtime) .. "ms")
+		
+		-- justification: if it fails instantly, re-running again will lock the system and be bad
+		-- but if it fails due to some user action, restarting lets us look at the log in the GUI
+		if runtime < 1000 then
+			print("Failed within one second! Aborting.")
+		else
+			write("Restarting in ")
+			for i = 5, 1, -1 do
+				write(i .. (i == 1 and "..." or ", "))
+				sleep(1)
+			end
+		end
+	end
+end
 
 for i = 1, 16 do
 	term.setPaletteColor(2 ^ (i - 1), table.unpack(original_palette[i]))
 end
 math.randomseed(table.unpack(original_randomseed))
 
-if not success then
-	error(err_message)
-end
 
-cospc_debuglog(nil, "Closed LDRIS2.")
+DEBUG:Log("Closed LDRIS2.")
 
 term.setCursorPos(1, scr_y - 1)
 term.clearLine()

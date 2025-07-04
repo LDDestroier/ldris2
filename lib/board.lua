@@ -1,4 +1,5 @@
 -- generates a new board, on which polyominos can be placed and interact
+-- TODO: optimize Render function! ideally, render minos onto framebuffer on second pass
 local Board = {}
 
 local gameConfig = require "config.gameconfig"
@@ -8,6 +9,7 @@ local mathfloor = math.floor
 local tableconcat = table.concat
 
 -- {match pattern, character, color invert?}
+-- used for RenderTiny method
 local tele_lookup_rev = {}
 local tele_lookup_nor = {
 	["      "] = "\128",
@@ -156,6 +158,7 @@ function Board:SerializeContents()
 end
 
 -- takes list of minos that it will render atop the board
+-- TODO: optimize please!
 function Board:Render(tOpts, ...)
 	tOpts = tOpts or {}
 	local xmod = tOpts[1] or 0

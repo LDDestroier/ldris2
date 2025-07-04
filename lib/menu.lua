@@ -64,6 +64,12 @@ function Menu:AddOption(name, sID, rx, ry)
 	table.insert(self.options, {name, rx, ry, sID})
 end
 
+function Menu:AddOptions(tOptions)
+	for i, option in ipairs(tOptions) do
+		self:AddOption(table.unpack(option))
+	end
+end
+
 function Menu:GetSelected()
 	return self.options[self.selected][4]
 end

@@ -10,9 +10,10 @@ return {
 	board_width = 10,			-- width of play area
 	board_height = 40,			-- height of play area
 	board_height_visible = 20,	-- height of play area that will render on screen (anchored to bottom)
-	spin_mode = 1,				-- 1 = allows T-spins
+	spin_mode = 2,				-- 1 = allows T-spins
 								-- 2 = allows J/L-spins
 								-- 3 = allows ALL SPINS! Similar to STUPID mode in tetr.io
+	are_non_T_spins_mini = true,	-- if true, then all J/K/S/Z mino spins are considered "mini" (contributes to B2B, but does not grant bonus)
 	can_180_spin = true,		-- if false, 180 spins are disallowed
 	can_rotate = true,			-- if false, will disallow ALL piece rotation (meme mode)
 	startingGravity = 0.15,		-- gravity per tick for minos
