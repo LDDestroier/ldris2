@@ -1,5 +1,5 @@
 local _AMOUNT_OF_GAMES = 1
-local _PRINT_DEBUG_INFO = true
+local _PRINT_DEBUG_INFO = false
 --[[
    ,--,
 ,---.'|
@@ -58,7 +58,7 @@ local Control = require "lib.control"
 local GameDebug = require "lib.gamedebug"
 local Menu = require "lib.menu"
 
-local DEBUG = GameDebug:New( _PRINT_DEBUG_INFO and GameDebug.FindMonitor(), _PRINT_DEBUG_INFO)
+DEBUG = GameDebug:New( _PRINT_DEBUG_INFO and GameDebug.FindMonitor(), _PRINT_DEBUG_INFO)
 
 local clientConfig = require "config.clientconfig" -- client config can be changed however you please
 local gameConfig = require "config.gameconfig"     -- ideally, only clients with IDENTICAL game configs should face one another
@@ -81,7 +81,7 @@ else
 	--error("no modem???")
 end
 
---local dfpwm = require "cc.audio.dfpwm"
+local dfpwm = require "cc.audio.dfpwm"
 
 local resume_count = 0
 
@@ -124,7 +124,13 @@ local function queueSound(name)
 		end
 
 	elseif speaker then
-		speaker.playLocalMusic(fs.combine(shell.dir(), "sound/" .. name .. ".ogg"), 0.15)
+  local decoder = dfpwm.make_decoder()
+  local buffer
+  for chunk in io.lines(fs.combine(shell.dir(),"sound/" .. name .. ".dfpwm"), 16 * 1024) do
+   buffer = decoder(chunk)
+   speaker.playAudio(buffer, 0.15)
+  end
+		--speaker.playLocalMusic(fs.combine(shell.dir(), "sound/" .. name .. ".ogg"), 0.15)
 	end
 end
 
